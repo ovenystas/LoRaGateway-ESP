@@ -21,22 +21,22 @@ Get your LoRa gateway up and running in 5 minutes.
 Default pin assignments (configurable in Config.h):
 
 ```
-RFM95 Pin    →    ESP8266 Pin (Huzzah defaults)
+RFM95 Pin    →    ESP8266 Pin (Huzzah - GPIO numbers)
 VCC          →    3V3
 GND          →    GND
-NSS (CS)     →    D8 (GPIO15)
-RESET (RST)  →    D4 (GPIO2)
-DIO0         →    D3 (GPIO0)
-SCK          →    D5 (GPIO14)
-MOSI         →    D7 (GPIO13)
-MISO         →    D6 (GPIO12)
+NSS (CS)     →    GPIO15 (D8)
+RESET (RST)  →    GPIO2 (D4)
+DIO0         →    GPIO0 (D3)
+SCK          →    GPIO14 (D5)
+MOSI         →    GPIO13 (D7)
+MISO         →    GPIO12 (D6)
 ```
 
 If using different pins, update `Config.h`:
 ```cpp
-#define LORA_CS_PIN  D8    // Change to your CS pin
-#define LORA_RST_PIN D4    // Change to your RST pin
-#define LORA_DIO_PIN D3    // Change to your DIO0 pin
+#define LORA_CS_PIN  15    // D8 - Chip Select (GPIO15)
+#define LORA_RST_PIN 2     // D4 - Reset (GPIO2)
+#define LORA_DIO_PIN 0     // D3 - DIO0 (GPIO0)
 ```
 
 ## Step-by-Step Setup
@@ -59,10 +59,10 @@ Edit `include/Config.h`:
 // 915000000 for North America
 #define LORA_FREQUENCY 868000000
 
-// Pin configuration (adjust if different from wiring)
-#define LORA_CS_PIN D8
-#define LORA_RST_PIN D4
-#define LORA_DIO_PIN D3
+// Pin configuration (Huzzah board defaults - adjust if different)
+#define LORA_CS_PIN 15     // D8 (GPIO15)
+#define LORA_RST_PIN 2     // D4 (GPIO2)
+#define LORA_DIO_PIN 0     // D3 (GPIO0)
 ```
 
 ### 2. Build and Upload
@@ -138,7 +138,8 @@ Quick temperature sensor example:
 #include "LoRaHandler.h"
 #include "Types.h"
 
-LoRaHandler loRa(10, 9, 2);  // Adjust CS, RST, DIO pins
+// Adjust these pins for your specific microcontroller
+LoRaHandler loRa(15, 2, 0);  // CS=GPIO15 (D8), RST=GPIO2 (D4), DIO0=GPIO0 (D3) for Huzzah
 
 void setup() {
   Serial.begin(115200);

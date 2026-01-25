@@ -1,15 +1,7 @@
 #pragma once
 
-// WiFi Configuration
-#define WIFI_SSID "YOUR_SSID"
-#define WIFI_PASSWORD "YOUR_PASSWORD"
-
-// MQTT Configuration
-#define MQTT_BROKER "192.168.1.100"
-#define MQTT_PORT 1883
-#define MQTT_CLIENT_ID "lora_gateway"
-#define MQTT_USERNAME ""
-#define MQTT_PASSWORD ""
+// Include secrets from secrets.h (keep this file private, not in git)
+#include "secrets.h"
 
 // LoRa Configuration
 // Pins for RFM95 (GPIO numbers for ESP8266 Huzzah)
