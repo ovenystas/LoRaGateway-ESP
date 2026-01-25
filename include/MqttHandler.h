@@ -1,5 +1,4 @@
-#ifndef MQTTHANDLER_H
-#define MQTTHANDLER_H
+#pragma once
 
 #include "Types.h"
 #include <Arduino.h>
@@ -44,5 +43,3 @@ private:
   static void buildTopic(char* buffer, size_t size, uint16_t nodeId, uint8_t deviceId, 
                         const char* suffix);
 };
-
-#endif // MQTTHANDLER_H

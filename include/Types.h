@@ -1,5 +1,4 @@
-#ifndef TYPES_H
-#define TYPES_H
+#pragma once
 
 #include <stdint.h>
 
@@ -68,5 +67,3 @@ struct NodeInfo {
   uint8_t deviceCount;
   DeviceInfo* devices;
 };
-
-#endif // TYPES_H

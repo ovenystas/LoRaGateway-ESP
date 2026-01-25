@@ -1,5 +1,4 @@
-#ifndef CONFIG_H
-#define CONFIG_H
+#pragma once
 
 // WiFi Configuration
 #define WIFI_SSID "YOUR_SSID"
@@ -24,5 +23,3 @@
 // Gateway Configuration
 #define GATEWAY_NAME "LoRa Gateway"
 #define NODE_TIMEOUT_SECONDS 300  // Timeout for node considered offline
-
-#endif // CONFIG_H

@@ -1,5 +1,4 @@
-#ifndef NODEREGISTRY_H
-#define NODEREGISTRY_H
+#pragma once
 
 #include "Types.h"
 #include <Arduino.h>
@@ -56,5 +55,3 @@ private:
   
   int findNodeIndex(uint16_t nodeId);
 };
-
-#endif // NODEREGISTRY_H

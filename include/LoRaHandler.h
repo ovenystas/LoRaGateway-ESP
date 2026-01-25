@@ -1,5 +1,4 @@
-#ifndef LORAHANDLER_H
-#define LORAHANDLER_H
+#pragma once
 
 #include "Types.h"
 #include <Arduino.h>
@@ -38,5 +37,3 @@ private:
   // Utility for CRC calculation
   uint16_t calculateCRC(const uint8_t* data, uint8_t len);
 };
-
-#endif // LORAHANDLER_H
