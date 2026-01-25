@@ -15,59 +15,59 @@
                     │ (Mosquitto/HA Supervisor)   │
                     └──────────────┬──────────────┘
                                    │
-         ┌─────────────────────────┼─────────────────────────┐
-         │         WiFi            │         MQTT            │
-         │      (TCP/IP)           │      (TCP/IP)           │
-         │                         │                         │
-    ┌────▼─────────────────────────▼─────────┐              │
-    │   ESP8266 + RFM95                       │              │
-    │   LoRa Gateway                          │              │
-    │  ┌──────────────────────────────────┐  │              │
-    │  │ main.cpp                         │  │              │
-    │  │ - WiFi Manager                   │  │              │
-    │  │ - MQTT Client Handler            │  │              │
-    │  │ - LoRa Message Router            │  │              │
-    │  │ - Node Discovery Engine          │  │              │
-    │  │ - Command Dispatcher             │  │              │
-    │  └──────────┬──────────────┬────────┘  │              │
-    │             │              │           │              │
-    │             │              │           │              │
-    │  ┌──────────▼─┐   ┌──────────▼──┐    │              │
-    │  │ LoRaHandler│   │MqttHandler  │    │              │
-    │  ├─────────────┤   ├─────────────┤    │              │
-    │  │ RFM95       │   │PubSub       │    │              │
-    │  │ Encode/Dec. │   │Discovery    │    │              │
-    │  │ CRC16       │   │Json Payload │    │              │
-    │  └──────┬───────┘   └─────────┬──┘    │              │
-    │         │                     │       │              │
-    │  ┌──────▼──────────────────────▼─────┐│              │
-    │  │  NodeRegistry                     ││              │
-    │  │  - Node List (50 max)             ││              │
-    │  │  - Device Map (16 per node)       ││              │
-    │  │  - Last Seen Tracking             ││              │
-    │  │  - Timeout Detection              ││              │
-    │  └────────────────────────────────────┘│              │
-    │                                        │              │
-    └────────────────────┬─────────────────────┘              │
-                         │                                  │
-         ┌───────────────┼──────────────┐                  │
-         │      LoRa (868/915 MHz)      │                  │
-         │   Wireless (100-300m range)  │                  │
-         │                              │                  │
-    ┌────▼─────┐  ┌──────────┐  ┌───────▼──┐   ┌────────┐ │
-    │ Node 1001 │  │ Node 1002 │  │ Node 1003 │  │Node... │ │
-    │ (Sensor)  │  │(Binary)   │  │(Switch)   │  │        │ │
-    └──────────┘  └──────────┘  └────────────┘  └────────┘ │
-                                                            │
-         ┌─────────────────────────────────────────────────┘
-         │
-    ┌────▼────────────────────────────────────────┐
-    │ Home Assistant Entities                     │
+            ┌──────────────────────┼─────────────────────────┐
+            │      WiFi            │         MQTT            │
+            │   (TCP/IP)           │      (TCP/IP)           │
+            │                      │                         │
+    ┌───────▼──────────────────────▼─────────┐               │
+    │   ESP8266 + RFM95                      │               │
+    │   LoRa Gateway                         │               │
+    │  ┌──────────────────────────────────┐  │               │
+    │  │ main.cpp                         │  │               │
+    │  │ - WiFi Manager                   │  │               │
+    │  │ - MQTT Client Handler            │  │               │
+    │  │ - LoRa Message Router            │  │               │
+    │  │ - Node Discovery Engine          │  │               │
+    │  │ - Command Dispatcher             │  │               │
+    │  └───────┬─────────────────┬────────┘  │               │
+    │          │                 │           │               │
+    │          │                 │           │               │
+    │  ┌───────▼──────┐   ┌──────▼──────┐    │               │
+    │  │ LoRaHandler  │   │MqttHandler  │    │               │
+    │  ├──────────────┤   ├─────────────┤    │               │
+    │  │ RFM95        │   │PubSub       │    │               │
+    │  │ Encode/Dec.  │   │Discovery    │    │               │
+    │  │ CRC16        │   │Json Payload │    │               │
+    │  └───────┬──────┘   └──────┬──────┘    │               │
+    │          │                 │           │               │
+    │  ┌───────▼─────────────────▼─────────┐ │               │
+    │  │  NodeRegistry                     │ │               │
+    │  │  - Node List (50 max)             │ │               │
+    │  │  - Device Map (16 per node)       │ │               │
+    │  │  - Last Seen Tracking             │ │               │
+    │  │  - Timeout Detection              │ │               │
+    │  └───────────────────────────────────┘ │               │
+    │                                        │               │
+    └────────────────────┬───────────────────┘               │
+                         │                                   │
+         ┌───────────────┼───────────────┐                   │
+         │      LoRa (868/915 MHz)       │                   │
+         │   Wireless (100-300m range)   │                   │
+         │                               │                   │
+    ┌────▼──────┐  ┌───────────┐  ┌──────▼────┐  ┌────────┐  │
+    │ Node 1001 │  │ Node 1002 │  │ Node 1003 │  │Node... │  │
+    │ (Sensor)  │  │(Binary)   │  │(Switch)   │  │        │  │
+    └───────────┘  └───────────┘  └───────────┘  └────────┘  │
+                                                             │
+                          ┌──────────────────────────────────┘
+                          │
+    ┌─────────────────────▼──────────────────────┐
+    │ Home Assistant Entities                    │
     │  - sensor.lora_1001_0 (temperature)        │
     │  - binary_sensor.lora_1002_0 (motion)      │
     │  - switch.lora_1003_0 (light control)      │
     │  - cover.lora_1004_0 (garage door)         │
-    └──────────────────────────────────────────────┘
+    └────────────────────────────────────────────┘
 ```
 
 ## Data Flow Diagrams
@@ -90,8 +90,8 @@ LoRa Node Powers On
          │ LoRa Wireless
          │
     ┌────▼────────────────────────────┐
-    │  Gateway RFM95 Receives          │
-    │  (parsePacket, read bytes)       │
+    │  Gateway RFM95 Receives         │
+    │  (parsePacket, read bytes)      │
     └────┬────────────────────────────┘
          │
          ├─ Decode message
@@ -112,8 +112,8 @@ LoRa Node Powers On
          ├─ Build Home Assistant discovery
          │
     ┌────▼────────────────────────────┐
-    │  MqttHandler.publishDiscovery()  │
-    │  HA will auto-create entity      │
+    │  MqttHandler.publishDiscovery() │
+    │  HA will auto-create entity     │
     └─────────────────────────────────┘
 ```
 
@@ -130,15 +130,15 @@ Node Reads Temperature Sensor
          │  - value.floatValue=23.5
          │
     ┌────▼────────────────────────────┐
-    │  Send via RFM95                  │
+    │  Send via RFM95                 │
     │  Packet: [SYNC][ID][TYPE][VAL]  │
-    │         [CRC_H][CRC_L]           │
+    │         [CRC_H][CRC_L]          │
     └────┬────────────────────────────┘
          │ LoRa Wireless (100-300m)
          │
     ┌────▼────────────────────────────┐
-    │  Gateway RFM95 Receives          │
-    │  loRa.handle() in main loop      │
+    │  Gateway RFM95 Receives         │
+    │  loRa.handle() in main loop     │
     └────┬────────────────────────────┘
          │
          ├─ Decode + CRC validate
@@ -185,19 +185,19 @@ Node Reads Temperature Sensor
 Home Assistant User Action (Toggle Light)
          │
     ┌────▼─────────────────────────┐
-    │  HA Switch Entity triggers    │
-    │  switch.lora_1003_0.toggle()  │
+    │  HA Switch Entity triggers   │
+    │  switch.lora_1003_0.toggle() │
     └────┬─────────────────────────┘
          │
          ├─ Create MQTT message
          │
     ┌────▼──────────────────────────────────┐
     │  Publish to:                          │
-    │  lora_gateway/node_1003/device_0/    │
+    │  lora_gateway/node_1003/device_0/     │
     │  command                              │
-    │                                      │
-    │  Payload:                            │
-    │  {"command": "ON"}                   │
+    │                                       │
+    │  Payload:                             │
+    │  {"command": "ON"}                    │
     └────┬──────────────────────────────────┘
          │ WiFi/MQTT to broker
          │
@@ -234,7 +234,7 @@ Home Assistant User Action (Toggle Light)
          │
     ┌────▼──────────────────────────────────┐
     │  LoRa Wireless Transmission           │
-    │  (868/915 MHz, 100-500ms latency)    │
+    │  (868/915 MHz, 100-500ms latency)     │
     └────┬──────────────────────────────────┘
          │
     ┌────▼──────────────────────────────────┐
@@ -270,7 +270,7 @@ Home Assistant User Action (Toggle Light)
          ├─ HA updates entity state
          │
     ┌────▼──────────────────────────────────┐
-    │  UI shows Light as ON ✓               │
+    │  UI shows Light as ON                 │
     │  All systems synchronized             │
     └───────────────────────────────────────┘
 ```
@@ -282,47 +282,47 @@ Home Assistant User Action (Toggle Light)
 │                      main.cpp                               │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │ WiFi Manager        MQTT Manager      LoRa Listener    │ │
-│  │ - connect()         - connect()       - handle()        │ │
-│  │ - status check      - loop()          - isConnected()   │ │
-│  │ - reconnect         - publish()       - setCallback()   │ │
+│  │ - connect()         - connect()       - handle()       │ │
+│  │ - status check      - loop()          - isConnected()  │ │
+│  │ - reconnect         - publish()       - setCallback()  │ │
 │  └────────────────────────────────────────────────────────┘ │
-│           ▲                    ▲                    ▲         │
-│           │                    │                    │         │
+│           ▲                    ▲                  ▲         │
+│           │                    │                  │         │
 │    ┌──────▼──────┐    ┌────────▼────────┐  ┌──────▼──────┐  │
-│    │ WiFi Stack  │    │ MQTT Handler    │  │LoRa Handler│  │
-│    │ (ESP8266)   │    │ - PubSubClient  │  │ - RFM95 SPI│  │
-│    │             │    │ - Discovery Gen │  │ - Encoding │  │
-│    │             │    │ - JSON Builder  │  │ - CRC16    │  │
+│    │ WiFi Stack  │    │ MQTT Handler    │  │LoRa Handler │  │
+│    │ (ESP8266)   │    │ - PubSubClient  │  │ - RFM95 SPI │  │
+│    │             │    │ - Discovery Gen │  │ - Encoding  │  │
+│    │             │    │ - JSON Builder  │  │ - CRC16     │  │
 │    └─────────────┘    └────────┬────────┘  └──────┬──────┘  │
-│                                 │                   │          │
-│                                 │                   │          │
-│                         ┌───────▼───────────────────▼──────┐  │
-│                         │   NodeRegistry                   │  │
-│                         │ (Runtime node tracking)          │  │
-│                         │ - Register nodes                 │  │
-│                         │ - Store device metadata          │  │
-│                         │ - Track last-seen times          │  │
-│                         │ - Query by ID                    │  │
-│                         └──────────────────────────────────┘  │
-│                                                               │
-│                     ┌─────────────────────────────┐           │
-│                     │   Types.h                   │           │
-│                     │ (Data structures)           │           │
-│                     │ - LoRaMessage               │           │
-│                     │ - DeviceType enum           │           │
-│                     │ - CommandType enum          │           │
-│                     │ - ValueType enum            │           │
-│                     │ - Device metadata structs   │           │
-│                     └─────────────────────────────┘           │
-│                                                               │
-│                     ┌─────────────────────────────┐           │
-│                     │   Config.h                  │           │
-│                     │ (User configuration)        │           │
-│                     │ - WiFi SSID/password        │           │
-│                     │ - MQTT broker settings      │           │
-│                     │ - LoRa frequency            │           │
-│                     │ - Pin assignments           │           │
-│                     └─────────────────────────────┘           │
+│                                │                  │         │
+│                                │                  │         │
+│                        ┌───────▼──────────────────▼──────┐  │
+│                        │   NodeRegistry                  │  │
+│                        │ (Runtime node tracking)         │  │
+│                        │ - Register nodes                │  │
+│                        │ - Store device metadata         │  │
+│                        │ - Track last-seen times         │  │
+│                        │ - Query by ID                   │  │
+│                        └─────────────────────────────────┘  │
+│                                                             │
+│                     ┌─────────────────────────────┐         │
+│                     │   Types.h                   │         │
+│                     │ (Data structures)           │         │
+│                     │ - LoRaMessage               │         │
+│                     │ - DeviceType enum           │         │
+│                     │ - CommandType enum          │         │
+│                     │ - ValueType enum            │         │
+│                     │ - Device metadata structs   │         │
+│                     └─────────────────────────────┘         │
+│                                                             │
+│                     ┌─────────────────────────────┐         │
+│                     │   Config.h                  │         │
+│                     │ (User configuration)        │         │
+│                     │ - WiFi SSID/password        │         │
+│                     │ - MQTT broker settings      │         │
+│                     │ - LoRa frequency            │         │
+│                     │ - Pin assignments           │         │
+│                     └─────────────────────────────┘         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -334,7 +334,7 @@ LoRa Message Binary Format:
 Byte Index:   0     1    2     3      4        5        6-X        Y-Z           Last-1  Last
             [SYNC] [NID_H] [NID_L] [DID] [DTYPE] [MTYPE] [VTYPE] [VALUE...] [CMD] [CDATA] [CRC]
 
-SYNC:     0xAA                                    (1 byte sync byte)
+SYNC:     0xAA (1 byte sync byte)
 NID:      nodeId (2 bytes, 16-bit uint)
 DID:      deviceId (1 byte)
 DTYPE:    DeviceType (1 byte, 0-3)
@@ -386,10 +386,10 @@ Loop Start
 ## State Machine Diagram (Node Lifecycle)
 
 ```
-                    ┌─────────────────┐
-                    │  Node Unknown   │
+                    ┌────────────────────┐
+                    │  Node Unknown      │
                     │  (Not in registry) │
-                    └────────┬────────┘
+                    └────────┬───────────┘
                              │
                     (Announcement received)
                              │
@@ -400,10 +400,10 @@ Loop Start
                              │
          ┌───────────────────┼───────────────────┐
          │                   │                   │
-    ┌────▼────┐        ┌─────▼────┐      ┌──────▼──────┐
-    │ Updating │   <──►│ Idle     │  ◄──│ Executing   │
-    │ (Messages)      │ (Normal) │    │ (Commands)  │
-    └────┬────┘        └─────┬────┘      └──────┬──────┘
+    ┌────▼──────┐      ┌─────▼────┐       ┌──────▼──────┐
+    │ Updating  │  <──►│ Idle     │    ◄──│ Executing   │
+    │ (Messages)|      │ (Normal) │       │ (Commands)  │
+    └────┬──────┘      └─────┬────┘       └──────┬──────┘
          │                   │                   │
          │              (No heartbeat)           │
          │              (timeout expires)        │
