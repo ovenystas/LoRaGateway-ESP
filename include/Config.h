@@ -12,10 +12,10 @@
 #define MQTT_PASSWORD ""
 
 // LoRa Configuration
-// Pins for RFM95 (adjust based on your wiring)
-#define LORA_CS_PIN D8      // Chip Select
-#define LORA_RST_PIN D4     // Reset
-#define LORA_DIO_PIN D3     // DIO0 (interrupt)
+// Pins for RFM95 (GPIO numbers for ESP8266 Huzzah)
+#define LORA_CS_PIN 15      // D8 - Chip Select
+#define LORA_RST_PIN 2      // D4 - Reset
+#define LORA_DIO_PIN 0      // D3 - DIO0 (interrupt)
 
 // LoRa Frequency (868 MHz for EU, 915 MHz for US)
 #define LORA_FREQUENCY 868000000

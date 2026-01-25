@@ -58,7 +58,7 @@ bool MqttHandler::publishSensorValue(uint16_t nodeId, uint8_t deviceId, const ch
   doc["device"] = deviceName;
   doc["timestamp"] = millis();
   
-  size_t len = serializeJson(doc, payload, sizeof(payload));
+  serializeJson(doc, payload, sizeof(payload));
   
   return client.publish(topic, payload);
 }
@@ -74,24 +74,19 @@ bool MqttHandler::publishDiscovery(const DeviceInfo& device, const char* nodePre
   char payload[512];
   
   const char* componentType = "sensor";  // Default
-  const char* haType = "sensor";
   
   switch (device.type) {
     case DeviceType::BINARY_SENSOR:
       componentType = "binary_sensor";
-      haType = "motion";
       break;
     case DeviceType::SENSOR:
       componentType = "sensor";
-      haType = "sensor";
       break;
     case DeviceType::SWITCH:
       componentType = "switch";
-      haType = "switch";
       break;
     case DeviceType::COVER:
       componentType = "cover";
-      haType = "cover";
       break;
   }
   
@@ -132,7 +127,7 @@ bool MqttHandler::publishDiscovery(const DeviceInfo& device, const char* nodePre
     doc["unit_of_measurement"] = device.unit;
   }
   
-  size_t len = serializeJson(doc, payload, sizeof(payload));
+  serializeJson(doc, payload, sizeof(payload));
   
   return client.publish(topic, payload, true);  // Retain discovery message
 }

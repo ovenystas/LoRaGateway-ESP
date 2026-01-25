@@ -1,6 +1,7 @@
 #include "LoRaHandler.h"
 #include <LoRa.h>
 #include <crc.h>
+#include <cstring>
 
 LoRaHandler::LoRaHandler(int csPin, int rstPin, int dioPin)
     : csPin(csPin), rstPin(rstPin), dioPin(dioPin), onMessageReceived(nullptr) {}
@@ -123,7 +124,7 @@ uint8_t LoRaHandler::encodeMessage(const LoRaMessage& msg, uint8_t* buffer, uint
   for (uint8_t i = 0; i < pos; i++) {
     crcCalculator.add(buffer[i]);
   }
-  crc = crcCalculator.getCRC();
+  crc = crcCalculator.calc();
   
   buffer[pos++] = (crc >> 8) & 0xFF;
   buffer[pos++] = crc & 0xFF;
@@ -141,7 +142,7 @@ bool LoRaHandler::decodeMessage(const uint8_t* buffer, uint8_t len, LoRaMessage&
   for (uint8_t i = 0; i < len - 2; i++) {
     crcCalculator.add(buffer[i]);
   }
-  uint16_t calculatedCrc = crcCalculator.getCRC();
+  uint16_t calculatedCrc = crcCalculator.calc();
   uint16_t receivedCrc = ((uint16_t)buffer[len - 2] << 8) | buffer[len - 1];
   
   if (calculatedCrc != receivedCrc) {
@@ -169,7 +170,7 @@ bool LoRaHandler::decodeMessage(const uint8_t* buffer, uint8_t len, LoRaMessage&
     case ValueType::FLOAT_VALUE: {
       uint32_t floatBits = ((uint32_t)buffer[pos] << 24) | ((uint32_t)buffer[pos + 1] << 16) |
                            ((uint32_t)buffer[pos + 2] << 8) | buffer[pos + 3];
-      msg.value.floatValue = *(float*)&floatBits;
+      memcpy(&msg.value.floatValue, &floatBits, sizeof(float));
       pos += 4;
       break;
     }
