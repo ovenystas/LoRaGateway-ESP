@@ -39,6 +39,14 @@ If using different pins, update `Config.h`:
 #define LORA_DIO_PIN 0     // D3 - DIO0 (GPIO0)
 ```
 
+### Feather Huzzah
+
+![Feather Huzzah ESP8266 Pinout](img/adafruit_products_Huzzah_ESP8266_Pinout_v1.png)
+
+### RFM95
+
+![RFM95 Pinout](img/RFM95_pinout.jpg)
+
 ## Step-by-Step Setup
 
 ### 1. Configure the Gateway
