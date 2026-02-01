@@ -15,9 +15,7 @@
 #define LORA_FREQUENCY 868000000  // 868 MHz EU, 915 MHz US
 #define LORA_CS_PIN D8
 #define LORA_RST_PIN D4
-#define LORA_DIO_PIN D3
-
-// Node Management
+#define // Node Management
 #define NODE_TIMEOUT_SECONDS 300
 ```
 
@@ -166,7 +164,7 @@ void handleCommand(const LoRaMessage& msg) {
 }
 ```
 
-## Wiring (Huzzah + RFM95)
+## Wiring (NodeMCU-ESP32 + RFM95)
 
 ```
 RFM95 GND   → GND
@@ -183,8 +181,8 @@ RFM95 MISO  → D6  (GPIO12)
 
 ```bash
 # PlatformIO CLI
-platformio run -e huzzah
-platformio run -e huzzah --target upload
+platformio run -e nodemcu-32s
+platformio run -e nodemcu-32s --target upload
 platformio device monitor
 
 # Or use VS Code PlatformIO extension
@@ -283,6 +281,21 @@ Where:
 | MQTT Broker | MQTT operations | `src/MqttHandler.cpp` |
 | Node Registry | Device tracking | `src/NodeRegistry.cpp` |
 | Quick Start | Setup guide | `QUICKSTART.md` |
+ic | Main event loop | `src/main.cpp` |
+| LoRa Radio | RFM95W communication | `src/LoRaHandler.cpp` |
+| MQTT Broker | MQTT operations | `src/MqttHandler.cpp` |
+| Device Registry | Device tracking | `src/DeviceRegistry.cpp` |
+| Quick Start | Setup guide | `docs/QUICKSTART.md` |
+oop | `src/main.cpp` |
+| LoRa Radio | RFM95W communication | `src/LoRaHandler.cpp` |
+| MQTT Broker | MQTT operations | `src/MqttHandler.cpp` |
+| Device Registry | Device tracking | `src/DeviceRegistry.cpp` |
+| Quick Start | Setup guide | `docs/QUICKSTART.md` |
+ loop | `src/main.cpp` |
+| LoRa Radio | RFM95W communication | `src/LoRaHandler.cpp` |
+| MQTT Broker | MQTT operations | `src/MqttHandler.cpp` |
+| Device Registry | Device tracking | `src/DeviceRegistry.cpp` |
+| Quick Start | Setup guide | `docs/QUICKSTART.md` |
 | Full Docs | Complete reference | `README.md` |
 
 ---

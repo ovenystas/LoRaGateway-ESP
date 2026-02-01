@@ -12,6 +12,9 @@ public:
   // Connect to MQTT broker
   bool connect(const char* broker, uint16_t port, const char* clientId);
   
+  // Connect to MQTT broker with username and password
+  bool connect(const char* broker, uint16_t port, const char* clientId, const char* username, const char* password);
+  
   // Disconnect from MQTT broker
   void disconnect();
   

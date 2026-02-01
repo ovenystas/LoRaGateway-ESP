@@ -37,7 +37,7 @@ cp secrets_example.h secrets.h
 ### 3. Build and Upload
 
 ```bash
-platformio run -e huzzah --target upload
+platformio run -e nodemcu-32s --target upload
 ```
 
 ## Important Notes
@@ -85,7 +85,7 @@ LoRaGateway-ESP/
 
 ## Testing Your Setup
 
-1. Build the project: `platformio run -e huzzah`
+1. Build the project: `platformio run -e nodemcu-32s`
 2. Check that `secrets.h` is in `.gitignore`: `git check-ignore include/secrets.h`
 3. Verify it shows as gitignored (should return the path)
 
@@ -109,7 +109,7 @@ Then in `Config.h`:
 #endif
 ```
 
-Build with: `platformio run -e huzzah -D ENVIRONMENT_HOME`
+Build with: `platformio run -e nodemcu-32s -D ENVIRONMENT_HOME`
 
 **Option 2: Environment Variables**
 Use PlatformIO's `platformio.ini` with environment variables:
@@ -124,7 +124,7 @@ Then set environment variables before building:
 ```bash
 export WIFI_SSID="MyWiFi"
 export WIFI_PASSWORD="MyPassword"
-platformio run -e huzzah
+platformio run -e nodemcu-32s
 ```
 
 ## More Information

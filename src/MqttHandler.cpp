@@ -18,6 +18,17 @@ bool MqttHandler::connect(const char* broker, uint16_t port, const char* clientI
   return client.connect(clientId);
 }
 
+bool MqttHandler::connect(const char* broker, uint16_t port, const char* clientId, const char* username, const char* password) {
+  client.setServer(broker, port);
+  client.setCallback([this](char* topic, byte* payload, unsigned int length) {
+    if (onMessageReceived) {
+      onMessageReceived(topic, payload, length);
+    }
+  });
+  
+  return client.connect(clientId, username, password);
+}
+
 void MqttHandler::disconnect() {
   if (client.connected()) {
     client.disconnect();

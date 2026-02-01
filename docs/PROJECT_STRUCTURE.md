@@ -214,7 +214,7 @@ Component types: `sensor`, `binary_sensor`, `switch`, `cover`
 
 ### Prerequisites
 - PlatformIO IDE or CLI installed
-- ESP8266 board definition
+- ESP32 board definition
 - USB connection to development board
 
 ### Steps
@@ -228,12 +228,12 @@ Component types: `sensor`, `binary_sensor`, `switch`, `cover`
 2. **Build Project**
    ```bash
    cd LoRaGateway-ESP
-   platformio run -e huzzah
+   platformio run -e nodemcu-32s
    ```
 
 3. **Upload to Device**
    ```bash
-   platformio run -e huzzah --target upload
+   platformio run -e nodemcu-32s --target upload
    ```
 
 4. **Monitor Serial Output**

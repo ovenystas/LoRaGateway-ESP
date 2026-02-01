@@ -1,6 +1,5 @@
 #include <Arduino.h>
-#include <ESP8266WiFi.h>
-#include <WiFiClient.h>
+#include <WiFi.h>
 #include "Config.h"
 #include "Types.h"
 #include "LoRaHandler.h"
@@ -76,7 +75,7 @@ void loop() {
       Serial.print(":");
       Serial.println(MQTT_PORT);
       
-      if (mqtt.connect(MQTT_BROKER, MQTT_PORT, MQTT_CLIENT_ID)) {
+      if (mqtt.connect(MQTT_BROKER, MQTT_PORT, MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD)) {
         Serial.println("MQTT connected!");
         
         // Resubscribe to all device command topics

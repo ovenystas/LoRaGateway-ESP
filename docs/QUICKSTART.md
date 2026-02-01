@@ -5,7 +5,7 @@ Get your LoRa gateway up and running in 5 minutes.
 ## What You Need
 
 ### Hardware
-- **ESP8266 board** (Adafruit Huzzah, Wemos D1, etc.)
+- **ESP32 board** (NodeMCU-ESP32)
 - **RFM95 LoRa module** (868 MHz or 915 MHz)
 - **USB cable** for programming
 - **Antenna** for LoRa module (433 MHz for 868, 915 MHz for US)
@@ -21,7 +21,7 @@ Get your LoRa gateway up and running in 5 minutes.
 Default pin assignments (configurable in Config.h):
 
 ```
-RFM95 Pin    →    ESP8266 Pin (Huzzah - GPIO numbers)
+RFM95 Pin    →    ESP32 Pin (NodeMCU-ESP32 - GPIO numbers)
 VCC          →    3V3
 GND          →    GND
 NSS (CS)     →    GPIO15 (D8)
@@ -39,9 +39,9 @@ If using different pins, update `Config.h`:
 #define LORA_DIO_PIN 0     // D3 - DIO0 (GPIO0)
 ```
 
-### Feather Huzzah
+### NodeMCU-ESP32
 
-![Feather Huzzah ESP8266 Pinout](img/adafruit_products_Huzzah_ESP8266_Pinout_v1.png)
+![NodeMCU-ESP32 Pinout](img/NodeMCU-ESP32_pinout.png)
 
 ### RFM95
 
@@ -67,7 +67,7 @@ Edit `include/Config.h`:
 // 915000000 for North America
 #define LORA_FREQUENCY 868000000
 
-// Pin configuration (Huzzah board defaults - adjust if different)
+// Pin configuration (NodeMCU-ESP32 board defaults - adjust if different)
 #define LORA_CS_PIN 15     // D8 (GPIO15)
 #define LORA_RST_PIN 2     // D4 (GPIO2)
 #define LORA_DIO_PIN 0     // D3 (GPIO0)
@@ -79,10 +79,10 @@ In VS Code with PlatformIO:
 
 ```bash
 # Build the project
-platformio run -e huzzah
+platformio run -e nodemcu-32s
 
 # Upload to device
-platformio run -e huzzah --target upload
+platformio run -e nodemcu-32s --target upload
 
 # Open serial monitor
 platformio device monitor
@@ -147,7 +147,7 @@ Quick temperature sensor example:
 #include "Types.h"
 
 // Adjust these pins for your specific microcontroller
-LoRaHandler loRa(15, 2, 0);  // CS=GPIO15 (D8), RST=GPIO2 (D4), DIO0=GPIO0 (D3) for Huzzah
+LoRaHandler loRa(15, 2, 0);  // CS=GPIO15 (D8), RST=GPIO2 (D4), DIO0=GPIO0 (D3) for NodeMCU-ESP32
 
 void setup() {
   Serial.begin(115200);
@@ -188,7 +188,7 @@ void loop() {
 
 ### Gateway won't connect to WiFi
 - Check SSID and password in Config.h
-- Verify WiFi network is 2.4GHz (ESP8266 doesn't support 5GHz)
+- Verify WiFi network is 2.4GHz (ESP32 doesn't support 5GHz)
 - Look for error messages on serial monitor
 
 ### MQTT not connecting

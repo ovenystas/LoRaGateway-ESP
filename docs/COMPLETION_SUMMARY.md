@@ -2,7 +2,7 @@
 
 ## ✅ Project Complete
 
-A fully-functional, production-ready LoRa gateway has been implemented for the ESP8266 (Huzzah) development board.
+A fully-functional, production-ready LoRa gateway has been implemented for the NodeMCU-ESP32 development board.
 
 ## 📦 Deliverables
 
@@ -280,7 +280,7 @@ All configurable via `include/Config.h`:
 - **Production Ready**: Error handling and recovery mechanisms
 - **Well Documented**: Multiple guides for different skill levels
 - **Extensible Design**: Easy to add new features
-- **Memory Efficient**: Optimized for ESP8266 constraints
+- **Memory Efficient**: Optimized for ESP32 constraints
 
 ## 🎉 Summary
 

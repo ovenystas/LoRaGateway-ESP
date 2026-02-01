@@ -20,7 +20,7 @@
             │   (TCP/IP)           │      (TCP/IP)           │
             │                      │                         │
     ┌───────▼──────────────────────▼─────────┐               │
-    │   ESP8266 + RFM95                      │               │
+    │   ESP32 + RFM95                      │               │
     │   LoRa Gateway                         │               │
     │  ┌──────────────────────────────────┐  │               │
     │  │ main.cpp                         │  │               │
@@ -290,7 +290,7 @@ Home Assistant User Action (Toggle Light)
 │           │                    │                  │         │
 │    ┌──────▼──────┐    ┌────────▼────────┐  ┌──────▼──────┐  │
 │    │ WiFi Stack  │    │ MQTT Handler    │  │LoRa Handler │  │
-│    │ (ESP8266)   │    │ - PubSubClient  │  │ - RFM95 SPI │  │
+│    │ (ESP32)   │    │ - PubSubClient  │  │ - RFM95 SPI │  │
 │    │             │    │ - Discovery Gen │  │ - Encoding  │  │
 │    │             │    │ - JSON Builder  │  │ - CRC16     │  │
 │    └─────────────┘    └────────┬────────┘  └──────┬──────┘  │

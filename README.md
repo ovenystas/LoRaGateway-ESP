@@ -23,7 +23,7 @@ This gateway enables bidirectional communication between:
 
 ## Hardware
 
-- **ESP8266 Development Board**: Adafruit Feather Huzzah
+- **ESP32 Development Board**: Joy-it NodeMCU-ESP32
 - **LoRa Module**: RFM95 (868 MHz / 915 MHz configurable)
 
 ### Pin Configuration (Configurable)
@@ -175,11 +175,11 @@ Once a node is discovered, the gateway automatically publishes discovery message
 Using PlatformIO:
 
 ```bash
-# Build for ESP8266/Huzzah
-platformio run -e huzzah
+# Build for NodeMCU-ESP32
+platformio run -e nodemcu-32s
 
 # Upload to device
-platformio run -e huzzah --target upload
+platformio run -e nodemcu-32s --target upload
 
 # Monitor serial output
 platformio device monitor

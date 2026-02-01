@@ -189,7 +189,7 @@ NodeRegistry.cpp (Device Registry)
 | ArduinoJson | 7.4.2 | JSON payload handling | Benoit Blanchon |
 | CRC | 1.0.3 | CRC16 message validation | Rob Tillaart |
 | Crypto | 0.4.0 | Encryption support (future) | Rhys Weatherley |
-| ESP8266 Arduino Core | 3.1.x | ESP8266 SDK | ESP8266 Community |
+| ESP32 Arduino Core | 3.1.x | ESP32 SDK | ESP32 Community |
 
 ## 🔧 Configuration Checklist
 
@@ -322,7 +322,7 @@ Node executes command
 
 1. ✅ Read [QUICKSTART.md](QUICKSTART.md)
 2. ✅ Configure [Config.h](include/Config.h)
-3. ✅ Build and upload to ESP8266
+3. ✅ Build and upload to ESP32
 4. ✅ Monitor serial output to verify operation
 5. ✅ Create your first sensor node
 6. ✅ Watch gateway discover and register it
