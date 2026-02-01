@@ -1,43 +1,99 @@
 # LoRaGateway-ESP
 
-An ESP-based LoRa gateway bridging a local LoRa sensor network with MQTT/Home Assistant.
+An ESP-based LoRa gateway bridging a local LoRa sensor network with MQTT/Home Assistant integration.
 
 ## Overview
 
 This gateway enables bidirectional communication between:
-- **LoRa Nodes**: Sensor devices communicating wirelessly via LoRa (868 MHz)
+- **LoRa Nodes**: Sensor devices communicating wirelessly via LoRa (868 MHz / 915 MHz)
 - **MQTT Server**: Receives sensor updates and sends commands
-- **Home Assistant**: Auto-discovers devices and integrates with HA automations
+- **Home Assistant**: Auto-discovers devices and enables real-time control
 
 ### Key Features
 
-- **Runtime Node Discovery**: Nodes are discovered when they first communicate
-- **Home Assistant Auto-Discovery**: Automatically announces discovered devices to HA
+- **Runtime Node Discovery**: Nodes are discovered automatically when they first communicate
+- **Home Assistant Auto-Discovery**: Devices appear automatically in Home Assistant
 - **Bidirectional Communication**: Sensor values → MQTT, Commands from HA → LoRa
-- **Device Types Supported**:
-  - BinarySensor (motion sensors, door sensors, etc.)
-  - Sensor (temperature, humidity, distance, etc.)
-  - Switch (on/off control)
-  - Cover (blinds, garage doors, etc.)
-- **Node Timeout Management**: Automatically removes nodes that haven't communicated
+- **Device Types**: BinarySensor, Sensor, Switch, Cover
+- **Node Timeout Management**: Automatically removes offline nodes
+- **CRC16 Validation**: Reliable message integrity checking
+- **Credentials Support**: Optional MQTT authentication
 
-## Hardware
+## Quick Start
 
-- **ESP32 Development Board**: Joy-it NodeMCU-ESP32
-- **LoRa Module**: RFM95 (868 MHz / 915 MHz configurable)
+### Requirements
 
-### Pin Configuration (Configurable)
+**Hardware:**
+- ESP32 board (Joy-it NodeMCU-ESP32 recommended)
+- RFM95 LoRa module (868 MHz or 915 MHz)
+- USB cable for programming
+- LoRa antenna
 
-By default in [include/Config.h](include/Config.h):
+**Software:**
+- PlatformIO (VS Code extension or CLI)
+- MQTT broker (Mosquitto, Home Assistant, etc.)
+- WiFi network access
+
+### Setup (5 minutes)
+
+1. **Copy secrets template:**
+   ```bash
+   cp include/secrets_example.h include/secrets.h
+   ```
+
+2. **Edit `include/secrets.h` with your credentials:**
+   ```cpp
+   #define WIFI_SSID "YourWiFiName"
+   #define WIFI_PASSWORD "YourPassword"
+   #define MQTT_BROKER "192.168.1.100"
+   #define MQTT_PORT 1883
+   #define MQTT_USERNAME "mqtt_user"      // Optional
+   #define MQTT_PASSWORD "mqtt_password"  // Optional
+   ```
+
+3. **Hardware Wiring**
+
+   | RFM95 | NodeMCU-ESP32 |
+   | ----- | ------------- |
+   | 3.3V  | 3V3           |
+   | GND   | GND           |
+   | NSS   | D5            |
+   | MISO  | D19           |
+   | MOSI  | D23           |
+   | SCK   | D18           |
+   | RST   | D14           |
+   | DIO0  | D2            |
+   | ANA   | Antenna wire  |
+
+   **Antenna wire length:**
+
+   - 868 MHz: 86,3 mm
+   - 915 MHz: 81,9 mm
+   - 433 MHz: 173,1 mm
+
+4. **Build and Upload:**
+   ```bash
+   platformio run -e nodemcu-32s --target upload
+   platformio device monitor
+   ```
+
+5. **Verify startup:**
+   ```
+   LoRa Gateway starting up...
+   WiFi connected! IP: 192.168.1.x
+   MQTT connected!
+   ```
+
+### Adjust Pin Configuration
+
+Edit `include/secrets.h` to change LoRa pins (if using different GPIO):
+```cpp
+#define LORA_CS_PIN 5       // Chip Select (NSS)
+#define LORA_RST_PIN 14     // Reset
+#define LORA_DIO_PIN 2      // DIO0 interrupt
 ```
-LORA_CS_PIN  = D8  (Chip Select)
-LORA_RST_PIN = D4  (Reset)
-LORA_DIO_PIN = D3  (DIO0 interrupt)
-```
 
-Adjust these pins based on your wiring.
-
-## Software Architecture
+## Architecture
 
 ### Core Components
 
@@ -69,36 +125,34 @@ Adjust these pins based on your wiring.
 
 ## Configuration
 
-Edit [include/Config.h](include/Config.h) with your settings:
+All settings are in `include/secrets.h`:
 
 ```cpp
-// WiFi
-#define WIFI_SSID "YOUR_SSID"
-#define WIFI_PASSWORD "YOUR_PASSWORD"
+// WiFi credentials
+#define WIFI_SSID "YourWiFiName"
+#define WIFI_PASSWORD "YourPassword"
 
-// MQTT
+// MQTT broker
 #define MQTT_BROKER "192.168.1.100"
 #define MQTT_PORT 1883
 #define MQTT_CLIENT_ID "lora_gateway"
+#define MQTT_USERNAME "user"      // Optional
+#define MQTT_PASSWORD "password"  // Optional
 
-// LoRa
-#define LORA_CS_PIN D8
-#define LORA_RST_PIN D4
-#define LORA_DIO_PIN D3
-#define LORA_FREQUENCY 868000000  // 868 MHz for EU, 915 MHz for US
+// LoRa pins and frequency
+#define LORA_CS_PIN 5           // GPIO5 (NSS)
+#define LORA_RST_PIN 14         // GPIO14 (RESET)
+#define LORA_DIO_PIN 2          // GPIO2 (DIO0)
+#define LORA_FREQUENCY 868000000  // 868 MHz EU, 915 MHz US
 
-// Gateway
-#define NODE_TIMEOUT_SECONDS 300  // Remove nodes offline for 5 minutes
+// Gateway timeout for inactive nodes
+#define NODE_TIMEOUT_SECONDS 300
 ```
 
-## Message Topics
+## Message Topics and Payloads
 
 ### State Publishing (Gateway → MQTT)
-```
-lora_gateway/node_{nodeId}/device_{deviceId}/state
-```
-
-Payload example:
+Topic: `lora_gateway/node_{nodeId}/device_{deviceId}/state`
 ```json
 {
   "value": 23.5,
@@ -107,27 +161,16 @@ Payload example:
 }
 ```
 
-### Command Subscription (MQTT → Gateway → LoRa)
-```
-lora_gateway/node_{nodeId}/device_{deviceId}/command
-```
-
-Payload examples:
+### Commands (MQTT → Gateway → LoRa)
+Topic: `lora_gateway/node_{nodeId}/device_{deviceId}/command`
 ```json
-{"command": "ON"}
-{"command": "OFF"}
-{"command": "OPEN"}
-{"command": "CLOSE"}
-{"command": "STOP"}
-{"value": 128}
+{"command": "ON"}     // BinarySensor/Switch
+{"command": "OFF"}    // BinarySensor/Switch
+{"command": "OPEN"}   // Cover
+{"command": "CLOSE"}  // Cover
+{"command": "STOP"}   // Cover
+{"value": 128}        // Any numeric device
 ```
-
-### Home Assistant Discovery
-```
-homeassistant/{component_type}/lora_{nodeId}_{deviceId}/config
-```
-
-Discovery payloads include device metadata, state topics, command topics, and integration info for Home Assistant.
 
 ## LoRa Message Format
 
@@ -148,74 +191,52 @@ Binary format with CRC16 validation:
 
 ## Home Assistant Integration
 
-Once a node is discovered, the gateway automatically publishes discovery messages. In Home Assistant, devices appear under the "LoRa Gateway" organization with the ability to:
+Once nodes are discovered, they appear automatically in Home Assistant. To enable:
 
+**In Home Assistant `configuration.yaml`:**
+```yaml
+mqtt:
+  broker: 192.168.1.100
+  username: mqtt_user
+  password: mqtt_password
+```
+
+Restart Home Assistant. Devices appear under **Settings → Devices & Services → MQTT**.
+
+**Capabilities:**
 - Read sensor values in real-time
 - Control switches and covers via commands
 - Create automations based on sensor state changes
 - Monitor node availability
 
-### Discovery Topics Structure
-
-**Binary Sensors** → `homeassistant/binary_sensor/lora_*_{nodeId}_{deviceId}/config`
-**Sensors** → `homeassistant/sensor/lora_{nodeId}_{deviceId}/config`
-**Switches** → `homeassistant/switch/lora_{nodeId}_{deviceId}/config`
-**Covers** → `homeassistant/cover/lora_{nodeId}_{deviceId}/config`
+**Discovery Topics:**
+- Binary Sensors: `homeassistant/binary_sensor/lora_{nodeId}_{deviceId}/config`
+- Sensors: `homeassistant/sensor/lora_{nodeId}_{deviceId}/config`
+- Switches: `homeassistant/switch/lora_{nodeId}_{deviceId}/config`
+- Covers: `homeassistant/cover/lora_{nodeId}_{deviceId}/config`
 
 ## Libraries
 
-- **LoRa** by Sandeep Mistry v0.8.0 - LoRa radio communication
-- **CRC** by Rob Tillaart v1.0.3 - CRC16 message validation
-- **Crypto** by Rhys Weatherley v0.4.0 - Encryption support (future)
-- **PubSubClient** by Nick O'Leary v2.8 - MQTT client
-- **ArduinoJson** by Benoit Blanchon v7.4.2 - JSON payload handling
-
-## Building and Uploading
-
-Using PlatformIO:
-
-```bash
-# Build for NodeMCU-ESP32
-platformio run -e nodemcu-32s
-
-# Upload to device
-platformio run -e nodemcu-32s --target upload
-
-# Monitor serial output
-platformio device monitor
-```
+- **LoRa** - LoRa radio communication
+- **PubSubClient** - MQTT client
+- **ArduinoJson** - JSON handling
+- **CRC** - Message validation
 
 ## Extending the Gateway
 
-### Supporting New Device Types
+### Adding a New Device Type
 
-1. Add new type to `DeviceType` enum in [include/Types.h](include/Types.h)
+1. Add type to `DeviceType` enum in [include/Types.h](include/Types.h)
 2. Update `publishDiscovery()` in [src/MqttHandler.cpp](src/MqttHandler.cpp)
-3. Update command parsing in `handleMqttMessage()` in [src/main.cpp](src/main.cpp)
+3. Update command handling in [src/main.cpp](src/main.cpp)
 
-### Custom Message Payloads
+### Custom LoRa Message Format
 
-Modify `encodeMessage()` and `decodeMessage()` in [src/LoRaHandler.cpp](src/LoRaHandler.cpp) to support custom data formats.
+Modify encoding/decoding in [src/LoRaHandler.cpp](src/LoRaHandler.cpp) to support custom payloads.
 
-### Node Authentication (Future)
+### Adding MQTT Authentication
 
-The Crypto library is included for potential AES-256 encryption support. Implement encryption in the message encoding/decoding functions.
-
-## Troubleshooting
-
-### No LoRa Messages Received
-- Verify pin connections match Config.h
-- Check LoRa frequency matches nodes (868 MHz vs 915 MHz)
-- Ensure RFM95 module has proper power supply
-- Check antenna connection
-
-### MQTT Not Connecting
-- Verify MQTT broker IP and port in Config.h
-- Check WiFi connection (Serial monitor should show IP)
-- Verify WiFi SSID and password
-- Check MQTT broker allows anonymous connections (if no credentials set)
-
-### Nodes Not Discovered
-- Ensure node sends first message with announcement (messageType = 0)
-- Check LoRa messages are received (Serial monitor)
-- Verify node ID and device ID are not out of range (uint16_t and uint8_t)
+Use the overloaded `connect()` function in [MqttHandler](include/MqttHandler.h):
+```cpp
+mqttHandler.connect(broker, port, clientId, username, password);
+```
