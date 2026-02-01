@@ -1,6 +1,5 @@
 #include "LoRaHandler.h"
 #include <LoRa.h>
-#include <crc.h>
 #include <cstring>
 
 LoRaHandler::LoRaHandler(int csPin, int rstPin, int dioPin)
@@ -94,7 +93,7 @@ void LoRaHandler::setDefaultHeader(LoRaHeader& header, uint8_t dst, uint8_t src,
 }
 
 uint8_t LoRaHandler::encodeMessage(const LoRaTxMessage& msg, uint8_t* buffer, uint8_t maxLen) {
-  if (maxLen < LORA_HEADER_LENGTH + 2) {  // Header + CRC
+  if (maxLen < LORA_HEADER_LENGTH) {
     return 0;
   }
 
@@ -112,22 +111,11 @@ uint8_t LoRaHandler::encodeMessage(const LoRaTxMessage& msg, uint8_t* buffer, ui
     pos += msg.payloadLength;
   }
 
-  // Calculate and append CRC16
-  uint16_t crc = 0xFFFF;
-  CRC16 crcCalculator(0x1021, true, true, 0xFFFF, 0);
-  for (uint8_t i = 0; i < pos; i++) {
-    crcCalculator.add(buffer[i]);
-  }
-  crc = crcCalculator.calc();
-
-  buffer[pos++] = (crc >> 8) & 0xFF;
-  buffer[pos++] = crc & 0xFF;
-
   return pos;
 }
 
 bool LoRaHandler::decodeMessage(const uint8_t* buffer, uint8_t len, LoRaRxMessage& msg) {
-  if (len < LORA_HEADER_LENGTH) {  // At minimum just header
+  if (len < LORA_HEADER_LENGTH) {
     return false;
   }
 
@@ -136,30 +124,8 @@ bool LoRaHandler::decodeMessage(const uint8_t* buffer, uint8_t len, LoRaRxMessag
   // Decode header
   pos += msg.header.fromByteArray(&buffer[pos]);
 
-  // Try to validate CRC if message is long enough
-  bool hasCrc = (len >= LORA_HEADER_LENGTH + 2);
-
-  if (hasCrc) {
-    // Verify CRC
-    CRC16 crcCalculator(0x1021, true, true, 0xFFFF, 0);
-    for (uint8_t i = 0; i < len - 2; i++) {
-      crcCalculator.add(buffer[i]);
-    }
-    uint16_t calculatedCrc = crcCalculator.calc();
-    uint16_t receivedCrc = ((uint16_t)buffer[len - 2] << 8) | buffer[len - 1];
-
-    if (calculatedCrc != receivedCrc) {
-      // CRC doesn't match, treat last 2 bytes as payload instead
-      hasCrc = false;
-    }
-  }
-
-  // Extract payload (everything between header and CRC, or all remaining if no CRC)
-  if (hasCrc) {
-    msg.payloadLength = len - LORA_HEADER_LENGTH - 2;  // Subtract header and CRC
-  } else {
-    msg.payloadLength = len - LORA_HEADER_LENGTH;  // No CRC, just payload
-  }
+  // Extract payload
+  msg.payloadLength = len - LORA_HEADER_LENGTH;
 
   if (msg.payloadLength > LORA_MAX_PAYLOAD_LENGTH) {
     return false;
