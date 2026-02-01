@@ -20,11 +20,11 @@ const unsigned long DEVICE_TIMEOUT_CHECK_INTERVAL = 60000; // Check device timeo
 
 // Forward declarations
 void setupWiFi();
-void handleLoRaMessage(const LoRaMessage& msg);
+void handleLoRaMessage(const LoRaRxMessage& msg);
 void handleMqttMessage(const char* topic, const byte* payload, unsigned int length);
-void onDeviceDiscovered(uint16_t deviceId, const LoRaMessage& msg);
-void sendMqttCommandToDevice(uint16_t deviceId, uint8_t entityId, CommandType cmd, const uint8_t* value);
-void publishDeviceDiscovery(uint16_t deviceId, uint8_t entityId);
+void onDeviceDiscovered(uint8_t deviceId, const DiscoveryItem& discovery);
+void sendMqttCommandToDevice(uint8_t deviceId, uint8_t entityId, int32_t value);
+void publishDeviceDiscovery(uint8_t deviceId, const DiscoveryItem& discovery);
 
 void setup() {
   Serial.begin(115200);
@@ -145,43 +145,61 @@ void setupWiFi() {
   }
 }
 
-void handleLoRaMessage(const LoRaMessage& msg) {
+void handleLoRaMessage(const LoRaRxMessage& msg) {
   Serial.print("LoRa message received from Device ");
-  Serial.print(msg.deviceId);
-  Serial.print(", Entity ");
-  Serial.println(msg.entityId);
+  Serial.print(msg.header.src);
+  Serial.print(", Type: ");
+  Serial.println(static_cast<uint8_t>(msg.header.flags.msgType));
   
-  // Check if this is a new device
-  bool isNewDevice = !deviceRegistry.hasDevice(msg.deviceId);
-  
-  if (isNewDevice) {
-    onDeviceDiscovered(msg.deviceId, msg);
-  } else {
-    // Update last seen time for existing device
-    deviceRegistry.updateDeviceLastSeen(msg.deviceId);
-  }
-  
-  // Forward sensor values to MQTT
-  if (msg.messageType == 1) {  // Sensor update
-    EntityInfo* entity = deviceRegistry.getEntity(msg.deviceId, msg.entityId);
-    if (entity) {
-      mqtt.publishSensorValue(msg.deviceId, msg.entityId, entity->name, msg);
-      
-      Serial.print("Published sensor value to MQTT: ");
-      switch (msg.valueType) {
-        case ValueType::BOOLEAN:
-          Serial.println(msg.value.boolValue ? "ON" : "OFF");
-          break;
-        case ValueType::INT_VALUE:
-          Serial.println(msg.value.intValue);
-          break;
-        case ValueType::FLOAT_VALUE:
-          Serial.println(msg.value.floatValue);
-          break;
-        default:
-          Serial.println("N/A");
+  // Handle different message types
+  switch (msg.header.flags.msgType) {
+    case LoRaMsgType::discovery_msg: {
+      // Parse discovery payload
+      if (msg.payloadLength >= DiscoveryItem::size()) {
+        DiscoveryItem discovery;
+        discovery.fromByteArray(msg.payload);
+        
+        uint8_t deviceId = msg.header.src;
+        onDeviceDiscovered(deviceId, discovery);
       }
+      break;
     }
+    
+    case LoRaMsgType::value_msg: {
+      // Parse value payload
+      if (msg.payloadLength > 0) {
+        ValueItem valueItem;
+        valueItem.fromByteArray(msg.payload);
+        
+        uint8_t deviceId = msg.header.src;
+        deviceRegistry.updateDeviceLastSeen(deviceId);
+        
+        // Forward sensor value to MQTT
+        EntityInfo* entity = deviceRegistry.getEntity(deviceId, valueItem.entityId);
+        if (entity) {
+          mqtt.publishSensorValue(deviceId, valueItem.entityId, entity->name, valueItem.value);
+          Serial.print("Published sensor value: ");
+          Serial.println(valueItem.value);
+        }
+      }
+      break;
+    }
+    
+    case LoRaMsgType::ping_req: {
+      // Send ping response
+      LoRaTxMessage response;
+      LoRaHandler::setDefaultHeader(response.header, msg.header.src, msg.header.dst, 
+                                    msg.header.id, LoRaMsgType::ping_msg);
+      response.payloadLength = 2;
+      response.payload[0] = ((-msg.rssi) >> 8) & 0xFF;
+      response.payload[1] = (-msg.rssi) & 0xFF;
+      loRa.sendMessage(response);
+      break;
+    }
+    
+    default:
+      Serial.println("Unknown message type");
+      break;
   }
 }
 
@@ -190,7 +208,7 @@ void handleMqttMessage(const char* topic, const byte* payload, unsigned int leng
   Serial.println(topic);
   
   // Parse topic: lora_gateway/device_{deviceId}/entity_{entityId}/command
-  uint16_t deviceId = 0;
+  uint8_t deviceId = 0;
   uint8_t entityId = 0;
   
   char topicCopy[256];
@@ -219,7 +237,7 @@ void handleMqttMessage(const char* topic, const byte* payload, unsigned int leng
       Serial.print(entity->name);
       Serial.println(")");
       
-      // Parse command payload
+      // Parse command payload - extract numeric value
       if (length > 0) {
         char payloadStr[256];
         strncpy(payloadStr, (const char*)payload, length);
@@ -228,62 +246,47 @@ void handleMqttMessage(const char* topic, const byte* payload, unsigned int leng
         Serial.print("Payload: ");
         Serial.println(payloadStr);
         
-        // For simple commands, parse the JSON payload
-        // This is a basic example - could be extended for more complex payloads
-        // Expected format: {"command": "ON"} or {"value": 128}
+        int32_t value = 0;
         
-        uint8_t commandValue[4] = {0};
-        CommandType cmd = CommandType::SET_STATE;
-        
-        // Simple string comparison for common commands
-        if (strstr(payloadStr, "\"command\":\"ON\"") || strstr(payloadStr, "\"state\":\"on\"")) {
-          cmd = CommandType::SET_STATE;
-          commandValue[0] = 1;
-        } else if (strstr(payloadStr, "\"command\":\"OFF\"") || strstr(payloadStr, "\"state\":\"off\"")) {
-          cmd = CommandType::SET_STATE;
-          commandValue[0] = 0;
-        } else if (strstr(payloadStr, "\"command\":\"OPEN\"")) {
-          cmd = CommandType::OPEN;
-        } else if (strstr(payloadStr, "\"command\":\"CLOSE\"")) {
-          cmd = CommandType::CLOSE;
-        } else if (strstr(payloadStr, "\"command\":\"STOP\"")) {
-          cmd = CommandType::STOP;
-        } else if (strstr(payloadStr, "\"value\"")) {
-          cmd = CommandType::SET_POSITION;
-          // Extract numeric value - simplified parsing
-          char* valueStr = strstr(payloadStr, "\"value\":");
-          if (valueStr) {
-            int value = atoi(valueStr + 8);
-            commandValue[0] = value & 0xFF;
-            commandValue[1] = (value >> 8) & 0xFF;
-          }
+        // Try to parse JSON "value" field
+        char* valueStr = strstr(payloadStr, "\"value\":");
+        if (valueStr) {
+          value = atoi(valueStr + 8);
+        } else if (strstr(payloadStr, "\"state\":\"on\"") || strstr(payloadStr, "\"command\":\"ON\"")) {
+          value = 1;
+        } else if (strstr(payloadStr, "\"state\":\"off\"") || strstr(payloadStr, "\"command\":\"OFF\"")) {
+          value = 0;
         }
         
-        sendMqttCommandToDevice(deviceId, entityId, cmd, commandValue);
+        sendMqttCommandToDevice(deviceId, entityId, value);
       }
     }
   }
 }
 
-void onDeviceDiscovered(uint16_t deviceId, const LoRaMessage& msg) {
-  Serial.print("New device discovered! Device ID: ");
-  Serial.println(deviceId);
+void onDeviceDiscovered(uint8_t deviceId, const DiscoveryItem& discovery) {
+  Serial.print("New entity discovered on Device ");
+  Serial.print(deviceId);
+  Serial.print("! Entity ID: ");
+  Serial.println(discovery.entityId);
   
-  // Register the device
-  String deviceName = String("LoRa Device ") + deviceId;
-  if (!deviceRegistry.registerDevice(deviceId, deviceName.c_str())) {
-    Serial.println("Failed to register device!");
-    return;
+  // Register the device if it doesn't exist
+  if (!deviceRegistry.hasDevice(deviceId)) {
+    String deviceName = String("LoRa Device ") + deviceId;
+    if (!deviceRegistry.registerDevice(deviceId, deviceName.c_str())) {
+      Serial.println("Failed to register device!");
+      return;
+    }
   }
   
-  // Register the entity that announced itself
+  // Register the entity
   EntityInfo entity;
   entity.deviceId = deviceId;
-  entity.entityId = msg.entityId;
-  entity.type = msg.entityType;
+  entity.entityId = discovery.entityId;
+  entity.type = discovery.type;
   entity.name = "Unknown Entity";
   entity.unit = "";
-  entity.valueType = msg.valueType;
+  entity.valueType = ValueType::INT_VALUE;
   entity.minValue = 0;
   entity.maxValue = 100;
   
@@ -292,38 +295,38 @@ void onDeviceDiscovered(uint16_t deviceId, const LoRaMessage& msg) {
     Serial.println(entity.name);
     
     // Publish Home Assistant discovery for this entity
-    publishDeviceDiscovery(deviceId, msg.entityId);
+    publishDeviceDiscovery(deviceId, discovery);
   }
 }
 
-void sendMqttCommandToDevice(uint16_t deviceId, uint8_t entityId, CommandType cmd, const uint8_t* value) {
-  LoRaMessage cmdMsg;
-  cmdMsg.deviceId = deviceId;
-  cmdMsg.entityId = entityId;
-  cmdMsg.messageType = 3;  // Command message
-  cmdMsg.command = cmd;
+void sendMqttCommandToDevice(uint8_t deviceId, uint8_t entityId, int32_t value) {
+  LoRaTxMessage cmdMsg;
+  LoRaHandler::setDefaultHeader(cmdMsg.header, deviceId, 0, 0, LoRaMsgType::configSet_req);
   
-  memcpy(cmdMsg.commandValue, value, 4);
+  // Create a simple command payload with the value
+  cmdMsg.payloadLength = 0;
+  cmdMsg.payload[cmdMsg.payloadLength++] = entityId;  // Target entity
   
-  // Determine entity type for the command
-  EntityInfo* entity = deviceRegistry.getEntity(deviceId, entityId);
-  if (entity) {
-    cmdMsg.entityType = entity->type;
-    cmdMsg.valueType = entity->valueType;
-    
-    if (loRa.sendMessage(cmdMsg)) {
-      Serial.print("Command sent to Device ");
-      Serial.print(deviceId);
-      Serial.print(", Entity ");
-      Serial.println(entityId);
-    } else {
-      Serial.println("Failed to send command!");
-    }
+  // Add the value (4 bytes big-endian)
+  cmdMsg.payload[cmdMsg.payloadLength++] = (value >> 24) & 0xFF;
+  cmdMsg.payload[cmdMsg.payloadLength++] = (value >> 16) & 0xFF;
+  cmdMsg.payload[cmdMsg.payloadLength++] = (value >> 8) & 0xFF;
+  cmdMsg.payload[cmdMsg.payloadLength++] = value & 0xFF;
+  
+  if (loRa.sendMessage(cmdMsg)) {
+    Serial.print("Command sent to Device ");
+    Serial.print(deviceId);
+    Serial.print(", Entity ");
+    Serial.print(entityId);
+    Serial.print(", Value: ");
+    Serial.println(value);
+  } else {
+    Serial.println("Failed to send command!");
   }
 }
 
-void publishDeviceDiscovery(uint16_t deviceId, uint8_t entityId) {
-  EntityInfo* entity = deviceRegistry.getEntity(deviceId, entityId);
+void publishDeviceDiscovery(uint8_t deviceId, const DiscoveryItem& discovery) {
+  EntityInfo* entity = deviceRegistry.getEntity(deviceId, discovery.entityId);
   if (entity) {
     if (mqtt.publishDiscovery(*entity, "lora_gateway")) {
       Serial.print("Published Home Assistant discovery for entity ");

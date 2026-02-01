@@ -39,33 +39,17 @@ bool MqttHandler::isConnected() {
   return client.connected();
 }
 
-bool MqttHandler::publishSensorValue(uint16_t deviceId, uint8_t entityId, const char* entityName,
-                                      const LoRaMessage& msg) {
+bool MqttHandler::publishSensorValue(uint8_t deviceId, uint8_t entityId, const char* entityName,
+                                      int32_t value) {
   char topic[128];
   char payload[256];
   
   // Build state topic
   snprintf(topic, sizeof(topic), "lora_gateway/device_%u/entity_%u/state", deviceId, entityId);
   
-  // Create JSON payload based on value type
+  // Create JSON payload
   JsonDocument doc;
-  
-  switch (msg.valueType) {
-    case ValueType::BOOLEAN:
-      doc["value"] = msg.value.boolValue;
-      doc["state"] = msg.value.boolValue ? "ON" : "OFF";
-      break;
-    case ValueType::INT_VALUE:
-      doc["value"] = msg.value.intValue;
-      break;
-    case ValueType::FLOAT_VALUE:
-      doc["value"] = msg.value.floatValue;
-      break;
-    case ValueType::STRING:
-      doc["value"] = "N/A";
-      break;
-  }
-  
+  doc["value"] = value;
   doc["entity"] = entityName;
   doc["timestamp"] = millis();
   
@@ -74,7 +58,7 @@ bool MqttHandler::publishSensorValue(uint16_t deviceId, uint8_t entityId, const 
   return client.publish(topic, payload);
 }
 
-bool MqttHandler::subscribeToCommands(uint16_t deviceId, uint8_t entityId) {
+bool MqttHandler::subscribeToCommands(uint8_t deviceId, uint8_t entityId) {
   char topic[128];
   snprintf(topic, sizeof(topic), "lora_gateway/device_%u/entity_%u/command", deviceId, entityId);
   return client.subscribe(topic);
@@ -155,7 +139,7 @@ void MqttHandler::handle() {
   }
 }
 
-void MqttHandler::buildTopic(char* buffer, size_t size, uint16_t deviceId, uint8_t entityId,
+void MqttHandler::buildTopic(char* buffer, size_t size, uint8_t deviceId, uint8_t entityId,
                              const char* suffix) {
   snprintf(buffer, size, "lora_gateway/device_%u/entity_%u/%s", deviceId, entityId, suffix);
 }

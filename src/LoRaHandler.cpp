@@ -22,8 +22,8 @@ bool LoRaHandler::begin(long frequency) {
   return true;
 }
 
-bool LoRaHandler::sendMessage(const LoRaMessage& msg) {
-  uint8_t buffer[64];
+bool LoRaHandler::sendMessage(const LoRaTxMessage& msg) {
+  uint8_t buffer[LORA_MAX_MESSAGE_LENGTH];
   uint8_t len = encodeMessage(msg, buffer, sizeof(buffer));
   
   if (len == 0) {
@@ -37,12 +37,12 @@ bool LoRaHandler::sendMessage(const LoRaMessage& msg) {
   return true;
 }
 
-bool LoRaHandler::readMessage(LoRaMessage& msg) {
+bool LoRaHandler::readMessage(LoRaRxMessage& msg) {
   if (LoRa.parsePacket() == 0) {
     return false;
   }
   
-  uint8_t buffer[64];
+  uint8_t buffer[LORA_MAX_MESSAGE_LENGTH];
   int len = 0;
   
   while (LoRa.available()) {
@@ -50,75 +50,57 @@ bool LoRaHandler::readMessage(LoRaMessage& msg) {
     if (len >= (int)sizeof(buffer)) break;
   }
   
-  return decodeMessage(buffer, len, msg);
+  if (decodeMessage(buffer, len, msg)) {
+    msg.rssi = LoRa.packetRssi();
+    return true;
+  }
+  
+  return false;
 }
 
-void LoRaHandler::setOnMessageReceived(void (*callback)(const LoRaMessage&)) {
+void LoRaHandler::setOnMessageReceived(void (*callback)(const LoRaRxMessage&)) {
   onMessageReceived = callback;
 }
 
 void LoRaHandler::handle() {
   if (LoRa.parsePacket() > 0) {
-    LoRaMessage msg;
+    LoRaRxMessage msg;
     if (readMessage(msg) && onMessageReceived) {
       onMessageReceived(msg);
     }
   }
 }
 
-uint8_t LoRaHandler::encodeMessage(const LoRaMessage& msg, uint8_t* buffer, uint8_t maxLen) {
-  if (maxLen < 20) {
+void LoRaHandler::setDefaultHeader(LoRaHeader& header, uint8_t dst, uint8_t src, uint8_t id,
+                                     LoRaMsgType msgType) {
+  header.dst = dst;
+  header.src = src;
+  header.id = id;
+  header.flags.msgType = msgType;
+  header.flags.ack_response = false;
+  header.flags.ack_request = false;
+}
+
+uint8_t LoRaHandler::encodeMessage(const LoRaTxMessage& msg, uint8_t* buffer, uint8_t maxLen) {
+  if (maxLen < LORA_HEADER_LENGTH + 2) {  // Header + CRC
     return 0;
   }
   
   uint8_t pos = 0;
   
-  // Message header
-  buffer[pos++] = 0xAA;  // Sync byte
+  // Encode header
+  pos += msg.header.toByteArray(&buffer[pos]);
   
-  // Device and entity info
-  buffer[pos++] = (msg.deviceId >> 8) & 0xFF;
-  buffer[pos++] = msg.deviceId & 0xFF;
-  buffer[pos++] = msg.entityId;
-  buffer[pos++] = static_cast<uint8_t>(msg.entityType);
-  buffer[pos++] = msg.messageType;
-  
-  // Value type and value
-  buffer[pos++] = static_cast<uint8_t>(msg.valueType);
-  
-  switch (msg.valueType) {
-    case ValueType::BOOLEAN:
-      buffer[pos++] = msg.value.boolValue ? 1 : 0;
-      break;
-    case ValueType::INT_VALUE:
-      buffer[pos++] = (msg.value.intValue >> 24) & 0xFF;
-      buffer[pos++] = (msg.value.intValue >> 16) & 0xFF;
-      buffer[pos++] = (msg.value.intValue >> 8) & 0xFF;
-      buffer[pos++] = msg.value.intValue & 0xFF;
-      break;
-    case ValueType::FLOAT_VALUE: {
-      uint32_t* fPtr = (uint32_t*)&msg.value.floatValue;
-      buffer[pos++] = (*fPtr >> 24) & 0xFF;
-      buffer[pos++] = (*fPtr >> 16) & 0xFF;
-      buffer[pos++] = (*fPtr >> 8) & 0xFF;
-      buffer[pos++] = *fPtr & 0xFF;
-      break;
+  // Copy payload
+  if (msg.payloadLength > 0) {
+    if (pos + msg.payloadLength + 2 > maxLen) {
+      return 0;
     }
-    case ValueType::STRING:
-      // For string, add length byte and string data
-      buffer[pos++] = 0;  // Length (would need msg.stringValue for real implementation)
-      break;
+    memcpy(&buffer[pos], msg.payload, msg.payloadLength);
+    pos += msg.payloadLength;
   }
   
-  // Command type (if applicable)
-  buffer[pos++] = static_cast<uint8_t>(msg.command);
-  
-  // Command value
-  for (int i = 0; i < 4 && pos < maxLen; i++) {
-    buffer[pos++] = msg.commandValue[i];
-  }
-  
-  // Calculate and append CRC
+  // Calculate and append CRC16
   uint16_t crc = 0xFFFF;
   CRC16 crcCalculator(0x1021, true, true, 0xFFFF, 0);
   for (uint8_t i = 0; i < pos; i++) {
@@ -132,8 +114,8 @@ uint8_t LoRaHandler::encodeMessage(const LoRaMessage& msg, uint8_t* buffer, uint
   return pos;
 }
 
-bool LoRaHandler::decodeMessage(const uint8_t* buffer, uint8_t len, LoRaMessage& msg) {
-  if (len < 18 || buffer[0] != 0xAA) {
+bool LoRaHandler::decodeMessage(const uint8_t* buffer, uint8_t len, LoRaRxMessage& msg) {
+  if (len < LORA_HEADER_LENGTH + 2) {  // Header + CRC minimum
     return false;
   }
   
@@ -149,40 +131,19 @@ bool LoRaHandler::decodeMessage(const uint8_t* buffer, uint8_t len, LoRaMessage&
     return false;
   }
   
-  uint8_t pos = 1;
+  uint8_t pos = 0;
   
-  msg.deviceId = ((uint16_t)buffer[pos] << 8) | buffer[pos + 1];
-  pos += 2;
-  msg.entityId = buffer[pos++];
-  msg.entityType = static_cast<EntityType>(buffer[pos++]);
-  msg.messageType = buffer[pos++];
-  msg.valueType = static_cast<ValueType>(buffer[pos++]);
+  // Decode header
+  pos += msg.header.fromByteArray(&buffer[pos]);
   
-  switch (msg.valueType) {
-    case ValueType::BOOLEAN:
-      msg.value.boolValue = buffer[pos++] != 0;
-      break;
-    case ValueType::INT_VALUE:
-      msg.value.intValue = ((int32_t)buffer[pos] << 24) | ((int32_t)buffer[pos + 1] << 16) |
-                           ((int32_t)buffer[pos + 2] << 8) | buffer[pos + 3];
-      pos += 4;
-      break;
-    case ValueType::FLOAT_VALUE: {
-      uint32_t floatBits = ((uint32_t)buffer[pos] << 24) | ((uint32_t)buffer[pos + 1] << 16) |
-                           ((uint32_t)buffer[pos + 2] << 8) | buffer[pos + 3];
-      memcpy(&msg.value.floatValue, &floatBits, sizeof(float));
-      pos += 4;
-      break;
-    }
-    case ValueType::STRING:
-      pos++;  // Skip length byte for now
-      break;
+  // Extract payload (everything between header and CRC)
+  msg.payloadLength = len - LORA_HEADER_LENGTH - 2;  // Subtract header and CRC
+  if (msg.payloadLength > LORA_MAX_PAYLOAD_LENGTH) {
+    return false;
   }
   
-  msg.command = static_cast<CommandType>(buffer[pos++]);
-  
-  for (int i = 0; i < 4 && pos < len - 2; i++) {
-    msg.commandValue[i] = buffer[pos++];
+  if (msg.payloadLength > 0) {
+    memcpy(msg.payload, &buffer[pos], msg.payloadLength);
   }
   
   return true;

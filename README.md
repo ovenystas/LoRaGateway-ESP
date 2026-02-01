@@ -98,30 +98,34 @@ Edit `include/secrets.h` to change LoRa pins (if using different GPIO):
 ### Core Components
 
 1. **Types.h** - Data structures and message formats
-   - `LoRaMessage`: Wireless message format with CRC validation
+   - `LoRaHeader`: Message header with destination, source, ID, and flags
+   - `LoRaMsgType`: 10 message types (ping, discovery, value, config, service)
    - Entity types: BinarySensor, Sensor, Switch, Cover
-   - Value types: Boolean, Int, Float, String
+   - Device classes for each entity type
+   - Payload structures: ValueItem, DiscoveryItem, ConfigItem, ServiceItem
 
 2. **LoRaHandler** - LoRa radio communication
+   - Header-based protocol with ACK request/response capability
    - Message encoding/decoding with CRC16 checksums
-   - Sends messages to nodes
-   - Receives and parses messages from nodes
+   - Variable-length payload support
+   - Sends and receives messages from devices
 
 3. **MqttHandler** - MQTT broker communication
-   - Connects to MQTT server
+   - Connects to MQTT server (with optional authentication)
    - Publishes sensor values and discovery messages
    - Subscribes to command topics
 
 4. **DeviceRegistry** - Tracks discovered devices and entities
    - Maintains list of registered devices
-   - Stores entity metadata (type, name, unit, etc.)
+   - Stores entity metadata (type, name, unit, device class, etc.)
    - Updates last-seen timestamps for timeout detection
 
 5. **main.cpp** - Gateway logic and message routing
    - WiFi/MQTT connection management
    - Routes messages between LoRa and MQTT
-   - Handles node discovery
-   - Manages command execution
+   - Handles device discovery messages
+   - Processes sensor value updates
+   - Executes commands from MQTT
 
 ## Configuration
 
@@ -172,21 +176,91 @@ Topic: `lora_gateway/device_{deviceId}/entity_{entityId}/command`
 {"value": 128}        // Any numeric device
 ```
 
-## LoRa Message Format
+## LoRa Protocol
+
+The gateway uses a structured header-based protocol inspired by professional IoT systems, with support for multiple message types and reliable communication.
+
+### Message Structure
+
+```
+[Header (4 bytes)] [Payload (0-92 bytes)] [CRC16 (2 bytes)]
+```
+
+**Header Format:**
+```
+Byte 0: Destination Address
+Byte 1: Source Address
+Byte 2: Message ID
+Byte 3: Flags
+  - Bit 7: ACK Response
+  - Bit 6: ACK Request
+  - Bits 3-0: Message Type (0-9)
+```
+
+### Message Types
+
+| Type | Name            | Direction        | Purpose                       |
+| ---- | --------------- | ---------------- | ----------------------------- |
+| 0    | `ping_req`      | Device → Gateway | Request RSSI measurement      |
+| 1    | `ping_msg`      | Gateway → Device | RSSI response                 |
+| 2    | `discovery_req` | Gateway → Device | Request entity discovery      |
+| 3    | `discovery_msg` | Device → Gateway | Announce entity with metadata |
+| 4    | `value_req`     | Gateway → Device | Request sensor values         |
+| 5    | `value_msg`     | Device → Gateway | Send sensor values            |
+| 6    | `config_req`    | Gateway → Device | Request configuration         |
+| 7    | `config_msg`    | Device → Gateway | Send configuration            |
+| 8    | `configSet_req` | Gateway → Device | Set configuration value       |
+| 9    | `service_req`   | Gateway → Device | Invoke service                |
+
+### Payload Structures
+
+**ValueItem** (5 bytes) - Sensor value
+```
+Byte 0: Entity ID
+Bytes 1-4: Value (int32, big-endian)
+```
+
+**DiscoveryItem** (5 bytes) - Entity announcement
+```
+Byte 0: Entity ID
+Byte 1: Entity Type (0=BinarySensor, 1=Sensor, 2=Switch, 3=Cover)
+Byte 2: Device Class (type-specific)
+Byte 3: Unit (measurement unit)
+Byte 4: Format (size, signedness, precision)
+```
+
+**ConfigItem** (11 bytes) - Configuration metadata
+```
+Byte 0: Config ID
+Byte 1: Unit
+Byte 2: Format
+Bytes 3-6: Min Value (int32, big-endian)
+Bytes 7-10: Max Value (int32, big-endian)
+```
+
+**ServiceItem** (2 bytes) - Service request
+```
+Byte 0: Entity ID
+Byte 1: Service Command
+```
+
+### CRC16 Validation
+
+- **Polynomial**: 0x1021 (CCITT)
+- **Init**: 0xFFFF
+- **Reflected Input/Output**: Yes
+- **Covers**: All bytes except the CRC itself
+
+## Message Format (Legacy Reference)
 
 Binary format with CRC16 validation:
 ```
-[SYNC] [DeviceID-H] [DeviceID-L] [EntityID] [Type] [MsgType] [ValueType] 
-[Value...] [Command] [CmdData0-3] [CRC-H] [CRC-L]
+[Header (4)] [Payload (0-92)] [CRC16 (2)]
 ```
 
-- **SYNC**: 0xAA
-- **DeviceID**: 16-bit device identifier
-- **EntityID**: 8-bit entity ID within device
-- **Type**: Entity type (0=BinarySensor, 1=Sensor, 2=Switch, 3=Cover)
-- **MsgType**: Message type (0=announcement, 1=sensor update, 3=command)
-- **ValueType**: Value encoding (0=bool, 1=int32, 2=float, 3=string)
-- **Value**: Variable length based on ValueType
+- **Header**: Destination, Source, Message ID, Flags
+- **Message Type**: Determines payload interpretation (ping, discovery, value, config, service)
+- **Payload**: Variable length based on message type
 - **CRC16**: CCITT polynomial validation
 
 ## Home Assistant Integration
@@ -224,19 +298,36 @@ Restart Home Assistant. Devices appear under **Settings → Devices & Services �
 
 ## Extending the Gateway
 
-### Adding a New Device Type
+### Adding a New Entity Type
 
 1. Add type to `EntityType` enum in [include/Types.h](include/Types.h)
-2. Update `publishDiscovery()` in [src/MqttHandler.cpp](src/MqttHandler.cpp)
-3. Update command handling in [src/main.cpp](src/main.cpp)
+2. Add device class enum if needed (e.g., `NewDeviceClass`)
+3. Update discovery parsing in [src/main.cpp](src/main.cpp) `handleLoRaMessage()`
+4. Update MQTT discovery topic in [src/MqttHandler.cpp](src/MqttHandler.cpp)
 
-### Custom LoRa Message Format
+### Adding a New Message Type
 
-Modify encoding/decoding in [src/LoRaHandler.cpp](src/LoRaHandler.cpp) to support custom payloads.
+1. Add type to `LoRaMsgType` enum in [include/Types.h](include/Types.h)
+2. Create new payload struct (e.g., `CustomItem`) with `toByteArray()` and `fromByteArray()` methods
+3. Add parsing logic in [src/main.cpp](src/main.cpp) `handleLoRaMessage()`
+4. Update `setDefaultHeader()` calls to use new message type
+
+### Custom LoRa Message Payloads
+
+Modify encoding/decoding in [src/LoRaHandler.cpp](src/LoRaHandler.cpp):
+- `encodeMessage()` - Serialize header + payload + CRC16
+- `decodeMessage()` - Parse header, validate CRC16, extract payload
 
 ### Adding MQTT Authentication
 
-Use the overloaded `connect()` function in [MqttHandler](include/MqttHandler.h):
+Already supported! Use the overloaded `connect()` function:
 ```cpp
-mqttHandler.connect(broker, port, clientId, username, password);
+mqtt.connect(broker, port, clientId, username, password);
 ```
+
+### Understanding Device Classes
+
+Device classes provide semantic information to Home Assistant:
+- **BinarySensorDeviceClass**: battery, motion, door, window, presence, etc.
+- **SensorDeviceClass**: humidity, distance, temperature
+- **CoverDeviceClass**: garage, blind, curtain
