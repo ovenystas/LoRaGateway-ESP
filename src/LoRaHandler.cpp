@@ -76,11 +76,11 @@ uint8_t LoRaHandler::encodeMessage(const LoRaMessage& msg, uint8_t* buffer, uint
   // Message header
   buffer[pos++] = 0xAA;  // Sync byte
   
-  // Node and device info
-  buffer[pos++] = (msg.nodeId >> 8) & 0xFF;
-  buffer[pos++] = msg.nodeId & 0xFF;
-  buffer[pos++] = msg.deviceId;
-  buffer[pos++] = static_cast<uint8_t>(msg.deviceType);
+  // Device and entity info
+  buffer[pos++] = (msg.deviceId >> 8) & 0xFF;
+  buffer[pos++] = msg.deviceId & 0xFF;
+  buffer[pos++] = msg.entityId;
+  buffer[pos++] = static_cast<uint8_t>(msg.entityType);
   buffer[pos++] = msg.messageType;
   
   // Value type and value
@@ -151,10 +151,10 @@ bool LoRaHandler::decodeMessage(const uint8_t* buffer, uint8_t len, LoRaMessage&
   
   uint8_t pos = 1;
   
-  msg.nodeId = ((uint16_t)buffer[pos] << 8) | buffer[pos + 1];
+  msg.deviceId = ((uint16_t)buffer[pos] << 8) | buffer[pos + 1];
   pos += 2;
-  msg.deviceId = buffer[pos++];
-  msg.deviceType = static_cast<DeviceType>(buffer[pos++]);
+  msg.entityId = buffer[pos++];
+  msg.entityType = static_cast<EntityType>(buffer[pos++]);
   msg.messageType = buffer[pos++];
   msg.valueType = static_cast<ValueType>(buffer[pos++]);
   

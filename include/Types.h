@@ -2,8 +2,8 @@
 
 #include <stdint.h>
 
-// Device types supported
-enum class DeviceType : uint8_t {
+// Entity types supported
+enum class EntityType : uint8_t {
   BINARY_SENSOR = 0,
   SENSOR = 1,
   SWITCH = 2,
@@ -29,9 +29,9 @@ enum class ValueType : uint8_t {
 
 // LoRa Message structure
 struct LoRaMessage {
-  uint16_t nodeId;        // Node identifier
-  uint8_t deviceId;       // Device ID within the node
-  DeviceType deviceType;  // Type of device
+  uint16_t deviceId;      // Device identifier
+  uint8_t entityId;       // Entity ID within the device
+  EntityType entityType;  // Type of entity
   uint8_t messageType;    // 0: announcement, 1: sensor update, 2: command response, 3: state update
   
   // For sensor updates
@@ -47,11 +47,11 @@ struct LoRaMessage {
   uint8_t commandValue[4]; // Generic command data
 };
 
-// Device metadata
-struct DeviceInfo {
-  uint16_t nodeId;
-  uint8_t deviceId;
-  DeviceType type;
+// Entity metadata
+struct EntityInfo {
+  uint16_t deviceId;
+  uint8_t entityId;
+  EntityType type;
   const char* name;
   const char* unit;      // Unit of measurement for sensors
   ValueType valueType;
@@ -59,11 +59,11 @@ struct DeviceInfo {
   float maxValue;
 };
 
-// Node metadata
-struct NodeInfo {
-  uint16_t nodeId;
+// Device metadata
+struct DeviceInfo {
+  uint16_t deviceId;
   const char* name;
   uint32_t lastSeen;
-  uint8_t deviceCount;
-  DeviceInfo* devices;
+  uint8_t entityCount;
+  EntityInfo* entities;
 };

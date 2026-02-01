@@ -5,17 +5,17 @@ An ESP-based LoRa gateway bridging a local LoRa sensor network with MQTT/Home As
 ## Overview
 
 This gateway enables bidirectional communication between:
-- **LoRa Nodes**: Sensor devices communicating wirelessly via LoRa (868 MHz / 915 MHz)
+- **LoRa Devices**: Sensor devices communicating wirelessly via LoRa (868 MHz / 915 MHz)
 - **MQTT Server**: Receives sensor updates and sends commands
 - **Home Assistant**: Auto-discovers devices and enables real-time control
 
 ### Key Features
 
-- **Runtime Node Discovery**: Nodes are discovered automatically when they first communicate
+- **Runtime Device Discovery**: Devices are discovered automatically when they first communicate
 - **Home Assistant Auto-Discovery**: Devices appear automatically in Home Assistant
 - **Bidirectional Communication**: Sensor values → MQTT, Commands from HA → LoRa
 - **Device Types**: BinarySensor, Sensor, Switch, Cover
-- **Node Timeout Management**: Automatically removes offline nodes
+- **Device Timeout Management**: Automatically removes offline devices
 - **CRC16 Validation**: Reliable message integrity checking
 - **Credentials Support**: Optional MQTT authentication
 
@@ -99,7 +99,7 @@ Edit `include/secrets.h` to change LoRa pins (if using different GPIO):
 
 1. **Types.h** - Data structures and message formats
    - `LoRaMessage`: Wireless message format with CRC validation
-   - Device types: BinarySensor, Sensor, Switch, Cover
+   - Entity types: BinarySensor, Sensor, Switch, Cover
    - Value types: Boolean, Int, Float, String
 
 2. **LoRaHandler** - LoRa radio communication
@@ -112,9 +112,9 @@ Edit `include/secrets.h` to change LoRa pins (if using different GPIO):
    - Publishes sensor values and discovery messages
    - Subscribes to command topics
 
-4. **NodeRegistry** - Tracks discovered nodes and devices
-   - Maintains list of registered nodes
-   - Stores device metadata (type, name, unit, etc.)
+4. **DeviceRegistry** - Tracks discovered devices and entities
+   - Maintains list of registered devices
+   - Stores entity metadata (type, name, unit, etc.)
    - Updates last-seen timestamps for timeout detection
 
 5. **main.cpp** - Gateway logic and message routing
@@ -145,24 +145,24 @@ All settings are in `include/secrets.h`:
 #define LORA_DIO_PIN 2          // GPIO2 (DIO0)
 #define LORA_FREQUENCY 868000000  // 868 MHz EU, 915 MHz US
 
-// Gateway timeout for inactive nodes
-#define NODE_TIMEOUT_SECONDS 300
+// Gateway timeout for inactive devices
+#define DEVICE_TIMEOUT_SECONDS 300
 ```
 
 ## Message Topics and Payloads
 
 ### State Publishing (Gateway → MQTT)
-Topic: `lora_gateway/node_{nodeId}/device_{deviceId}/state`
+Topic: `lora_gateway/device_{deviceId}/entity_{entityId}/state`
 ```json
 {
   "value": 23.5,
-  "device": "Temperature Sensor",
+  "entity": "Temperature Sensor",
   "timestamp": 1234567890
 }
 ```
 
 ### Commands (MQTT → Gateway → LoRa)
-Topic: `lora_gateway/node_{nodeId}/device_{deviceId}/command`
+Topic: `lora_gateway/device_{deviceId}/entity_{entityId}/command`
 ```json
 {"command": "ON"}     // BinarySensor/Switch
 {"command": "OFF"}    // BinarySensor/Switch
@@ -176,14 +176,14 @@ Topic: `lora_gateway/node_{nodeId}/device_{deviceId}/command`
 
 Binary format with CRC16 validation:
 ```
-[SYNC] [NodeID-H] [NodeID-L] [DeviceID] [Type] [MsgType] [ValueType] 
+[SYNC] [DeviceID-H] [DeviceID-L] [EntityID] [Type] [MsgType] [ValueType] 
 [Value...] [Command] [CmdData0-3] [CRC-H] [CRC-L]
 ```
 
 - **SYNC**: 0xAA
-- **NodeID**: 16-bit node identifier
-- **DeviceID**: 8-bit device ID within node
-- **Type**: Device type (0=BinarySensor, 1=Sensor, 2=Switch, 3=Cover)
+- **DeviceID**: 16-bit device identifier
+- **EntityID**: 8-bit entity ID within device
+- **Type**: Entity type (0=BinarySensor, 1=Sensor, 2=Switch, 3=Cover)
 - **MsgType**: Message type (0=announcement, 1=sensor update, 3=command)
 - **ValueType**: Value encoding (0=bool, 1=int32, 2=float, 3=string)
 - **Value**: Variable length based on ValueType
@@ -191,7 +191,7 @@ Binary format with CRC16 validation:
 
 ## Home Assistant Integration
 
-Once nodes are discovered, they appear automatically in Home Assistant. To enable:
+Once devices are discovered, they appear automatically in Home Assistant. To enable:
 
 **In Home Assistant `configuration.yaml`:**
 ```yaml
@@ -207,13 +207,13 @@ Restart Home Assistant. Devices appear under **Settings → Devices & Services �
 - Read sensor values in real-time
 - Control switches and covers via commands
 - Create automations based on sensor state changes
-- Monitor node availability
+- Monitor device availability
 
 **Discovery Topics:**
-- Binary Sensors: `homeassistant/binary_sensor/lora_{nodeId}_{deviceId}/config`
-- Sensors: `homeassistant/sensor/lora_{nodeId}_{deviceId}/config`
-- Switches: `homeassistant/switch/lora_{nodeId}_{deviceId}/config`
-- Covers: `homeassistant/cover/lora_{nodeId}_{deviceId}/config`
+- Binary Sensors: `homeassistant/binary_sensor/lora_{deviceId}_{entityId}/config`
+- Sensors: `homeassistant/sensor/lora_{deviceId}_{entityId}/config`
+- Switches: `homeassistant/switch/lora_{deviceId}_{entityId}/config`
+- Covers: `homeassistant/cover/lora_{deviceId}_{entityId}/config`
 
 ## Libraries
 
@@ -226,7 +226,7 @@ Restart Home Assistant. Devices appear under **Settings → Devices & Services �
 
 ### Adding a New Device Type
 
-1. Add type to `DeviceType` enum in [include/Types.h](include/Types.h)
+1. Add type to `EntityType` enum in [include/Types.h](include/Types.h)
 2. Update `publishDiscovery()` in [src/MqttHandler.cpp](src/MqttHandler.cpp)
 3. Update command handling in [src/main.cpp](src/main.cpp)
 

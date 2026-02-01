@@ -22,14 +22,14 @@ public:
   bool isConnected();
   
   // Publish a sensor value to MQTT
-  bool publishSensorValue(uint16_t nodeId, uint8_t deviceId, const char* deviceName, 
+  bool publishSensorValue(uint16_t deviceId, uint8_t entityId, const char* entityName, 
                           const LoRaMessage& msg);
   
-  // Subscribe to command topics for a device
-  bool subscribeToCommands(uint16_t nodeId, uint8_t deviceId);
+  // Subscribe to command topics for an entity
+  bool subscribeToCommands(uint16_t deviceId, uint8_t entityId);
   
   // Publish discovery message for Home Assistant
-  bool publishDiscovery(const DeviceInfo& device, const char* nodePrefix);
+  bool publishDiscovery(const EntityInfo& entity, const char* nodePrefix);
   
   // Set callback for received MQTT messages
   void setOnMessageReceived(void (*callback)(const char* topic, const byte* payload, unsigned int length));
@@ -43,6 +43,6 @@ private:
   void (*onMessageReceived)(const char*, const byte*, unsigned int);
   
   // Helper to build MQTT topic strings
-  static void buildTopic(char* buffer, size_t size, uint16_t nodeId, uint8_t deviceId, 
+  static void buildTopic(char* buffer, size_t size, uint16_t deviceId, uint8_t entityId, 
                         const char* suffix);
 };

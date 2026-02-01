@@ -4,27 +4,27 @@
 #include "Types.h"
 #include "LoRaHandler.h"
 #include "MqttHandler.h"
-#include "NodeRegistry.h"
+#include "DeviceRegistry.h"
 
 // Global instances
 WiFiClient wifiClient;
 LoRaHandler loRa(LORA_CS_PIN, LORA_RST_PIN, LORA_DIO_PIN);
 MqttHandler mqtt(wifiClient);
-NodeRegistry nodeRegistry;
+DeviceRegistry deviceRegistry;
 
 // Timing variables
 unsigned long lastMqttCheckTime = 0;
-unsigned long lastNodeTimeoutCheck = 0;
+unsigned long lastDeviceTimeoutCheck = 0;
 const unsigned long MQTT_CHECK_INTERVAL = 5000;        // Check MQTT connection every 5 seconds
-const unsigned long NODE_TIMEOUT_CHECK_INTERVAL = 60000; // Check node timeouts every minute
+const unsigned long DEVICE_TIMEOUT_CHECK_INTERVAL = 60000; // Check device timeouts every minute
 
 // Forward declarations
 void setupWiFi();
 void handleLoRaMessage(const LoRaMessage& msg);
 void handleMqttMessage(const char* topic, const byte* payload, unsigned int length);
-void onNodeDiscovered(uint16_t nodeId, const LoRaMessage& msg);
-void sendMqttCommandToNode(uint16_t nodeId, uint8_t deviceId, CommandType cmd, const uint8_t* value);
-void publishNodeDiscovery(uint16_t nodeId, uint8_t deviceId);
+void onDeviceDiscovered(uint16_t deviceId, const LoRaMessage& msg);
+void sendMqttCommandToDevice(uint16_t deviceId, uint8_t entityId, CommandType cmd, const uint8_t* value);
+void publishDeviceDiscovery(uint16_t deviceId, uint8_t entityId);
 
 void setup() {
   Serial.begin(115200);
@@ -78,13 +78,13 @@ void loop() {
       if (mqtt.connect(MQTT_BROKER, MQTT_PORT, MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD)) {
         Serial.println("MQTT connected!");
         
-        // Resubscribe to all device command topics
-        uint8_t nodeCount = 0;
-        NodeInfo** nodes = nodeRegistry.getAllNodes(nodeCount);
-        if (nodes) {
-          for (uint8_t i = 0; i < nodeCount; i++) {
-            for (uint8_t j = 0; j < nodes[i]->deviceCount; j++) {
-              mqtt.subscribeToCommands(nodes[i]->nodeId, nodes[i]->devices[j].deviceId);
+        // Resubscribe to all entity command topics
+        uint8_t deviceCount = 0;
+        DeviceInfo** devices = deviceRegistry.getAllDevices(deviceCount);
+        if (devices) {
+          for (uint8_t i = 0; i < deviceCount; i++) {
+            for (uint8_t j = 0; j < devices[i]->entityCount; j++) {
+              mqtt.subscribeToCommands(devices[i]->deviceId, devices[i]->entities[j].entityId);
             }
           }
         }
@@ -94,19 +94,19 @@ void loop() {
     }
   }
   
-  // Handle node timeout checks
-  if (currentTime - lastNodeTimeoutCheck >= NODE_TIMEOUT_CHECK_INTERVAL) {
-    lastNodeTimeoutCheck = currentTime;
+  // Handle device timeout checks
+  if (currentTime - lastDeviceTimeoutCheck >= DEVICE_TIMEOUT_CHECK_INTERVAL) {
+    lastDeviceTimeoutCheck = currentTime;
     
-    uint8_t nodeCount = 0;
-    NodeInfo** nodes = nodeRegistry.getAllNodes(nodeCount);
-    if (nodes) {
-      for (uint8_t i = 0; i < nodeCount; i++) {
-        if (currentTime - nodes[i]->lastSeen > (NODE_TIMEOUT_SECONDS * 1000)) {
-          Serial.print("Node ");
-          Serial.print(nodes[i]->nodeId);
+    uint8_t deviceCount = 0;
+    DeviceInfo** devices = deviceRegistry.getAllDevices(deviceCount);
+    if (devices) {
+      for (uint8_t i = 0; i < deviceCount; i++) {
+        if (currentTime - devices[i]->lastSeen > (NODE_TIMEOUT_SECONDS * 1000)) {
+          Serial.print("Device ");
+          Serial.print(devices[i]->deviceId);
           Serial.println(" has timed out - removing from registry");
-          nodeRegistry.unregisterNode(nodes[i]->nodeId);
+          deviceRegistry.unregisterDevice(devices[i]->deviceId);
         }
       }
     }
@@ -146,26 +146,26 @@ void setupWiFi() {
 }
 
 void handleLoRaMessage(const LoRaMessage& msg) {
-  Serial.print("LoRa message received from Node ");
-  Serial.print(msg.nodeId);
-  Serial.print(", Device ");
-  Serial.println(msg.deviceId);
+  Serial.print("LoRa message received from Device ");
+  Serial.print(msg.deviceId);
+  Serial.print(", Entity ");
+  Serial.println(msg.entityId);
   
-  // Check if this is a new node
-  bool isNewNode = !nodeRegistry.hasNode(msg.nodeId);
+  // Check if this is a new device
+  bool isNewDevice = !deviceRegistry.hasDevice(msg.deviceId);
   
-  if (isNewNode) {
-    onNodeDiscovered(msg.nodeId, msg);
+  if (isNewDevice) {
+    onDeviceDiscovered(msg.deviceId, msg);
   } else {
-    // Update last seen time for existing node
-    nodeRegistry.updateNodeLastSeen(msg.nodeId);
+    // Update last seen time for existing device
+    deviceRegistry.updateDeviceLastSeen(msg.deviceId);
   }
   
   // Forward sensor values to MQTT
   if (msg.messageType == 1) {  // Sensor update
-    DeviceInfo* device = nodeRegistry.getDevice(msg.nodeId, msg.deviceId);
-    if (device) {
-      mqtt.publishSensorValue(msg.nodeId, msg.deviceId, device->name, msg);
+    EntityInfo* entity = deviceRegistry.getEntity(msg.deviceId, msg.entityId);
+    if (entity) {
+      mqtt.publishSensorValue(msg.deviceId, msg.entityId, entity->name, msg);
       
       Serial.print("Published sensor value to MQTT: ");
       switch (msg.valueType) {
@@ -189,34 +189,34 @@ void handleMqttMessage(const char* topic, const byte* payload, unsigned int leng
   Serial.print("MQTT message received on topic: ");
   Serial.println(topic);
   
-  // Parse topic: lora_gateway/node_{nodeId}/device_{deviceId}/command
-  uint16_t nodeId = 0;
-  uint8_t deviceId = 0;
+  // Parse topic: lora_gateway/device_{deviceId}/entity_{entityId}/command
+  uint16_t deviceId = 0;
+  uint8_t entityId = 0;
   
   char topicCopy[256];
   strncpy(topicCopy, topic, sizeof(topicCopy) - 1);
   topicCopy[sizeof(topicCopy) - 1] = '\0';
   
-  // Simple parsing - extract node ID and device ID from topic
-  char* nodeStr = strstr(topicCopy, "node_");
+  // Simple parsing - extract device ID and entity ID from topic
   char* deviceStr = strstr(topicCopy, "device_");
+  char* entityStr = strstr(topicCopy, "entity_");
   
-  if (nodeStr && deviceStr) {
-    nodeStr += 5;  // Skip "node_"
-    deviceStr += 7; // Skip "device_"
+  if (deviceStr && entityStr) {
+    deviceStr += 7;  // Skip "device_"
+    entityStr += 7; // Skip "entity_"
     
-    nodeId = atoi(nodeStr);
     deviceId = atoi(deviceStr);
+    entityId = atoi(entityStr);
     
-    // Check if node and device exist
-    DeviceInfo* device = nodeRegistry.getDevice(nodeId, deviceId);
-    if (device) {
-      Serial.print("Command for Node ");
-      Serial.print(nodeId);
-      Serial.print(", Device ");
+    // Check if device and entity exist
+    EntityInfo* entity = deviceRegistry.getEntity(deviceId, entityId);
+    if (entity) {
+      Serial.print("Command for Device ");
       Serial.print(deviceId);
+      Serial.print(", Entity ");
+      Serial.print(entityId);
       Serial.print(" (");
-      Serial.print(device->name);
+      Serial.print(entity->name);
       Serial.println(")");
       
       // Parse command payload
@@ -259,75 +259,75 @@ void handleMqttMessage(const char* topic, const byte* payload, unsigned int leng
           }
         }
         
-        sendMqttCommandToNode(nodeId, deviceId, cmd, commandValue);
+        sendMqttCommandToDevice(deviceId, entityId, cmd, commandValue);
       }
     }
   }
 }
 
-void onNodeDiscovered(uint16_t nodeId, const LoRaMessage& msg) {
-  Serial.print("New node discovered! Node ID: ");
-  Serial.println(nodeId);
+void onDeviceDiscovered(uint16_t deviceId, const LoRaMessage& msg) {
+  Serial.print("New device discovered! Device ID: ");
+  Serial.println(deviceId);
   
-  // Register the node
-  String nodeName = String("LoRa Node ") + nodeId;
-  if (!nodeRegistry.registerNode(nodeId, nodeName.c_str())) {
-    Serial.println("Failed to register node!");
+  // Register the device
+  String deviceName = String("LoRa Device ") + deviceId;
+  if (!deviceRegistry.registerDevice(deviceId, deviceName.c_str())) {
+    Serial.println("Failed to register device!");
     return;
   }
   
-  // Register the device that announced itself
-  DeviceInfo device;
-  device.nodeId = nodeId;
-  device.deviceId = msg.deviceId;
-  device.type = msg.deviceType;
-  device.name = "Unknown Device";
-  device.unit = "";
-  device.valueType = msg.valueType;
-  device.minValue = 0;
-  device.maxValue = 100;
+  // Register the entity that announced itself
+  EntityInfo entity;
+  entity.deviceId = deviceId;
+  entity.entityId = msg.entityId;
+  entity.type = msg.entityType;
+  entity.name = "Unknown Entity";
+  entity.unit = "";
+  entity.valueType = msg.valueType;
+  entity.minValue = 0;
+  entity.maxValue = 100;
   
-  if (nodeRegistry.registerDevice(nodeId, device)) {
-    Serial.print("Device registered: ");
-    Serial.println(device.name);
+  if (deviceRegistry.registerEntity(deviceId, entity)) {
+    Serial.print("Entity registered: ");
+    Serial.println(entity.name);
     
-    // Publish Home Assistant discovery for this device
-    publishNodeDiscovery(nodeId, msg.deviceId);
+    // Publish Home Assistant discovery for this entity
+    publishDeviceDiscovery(deviceId, msg.entityId);
   }
 }
 
-void sendMqttCommandToNode(uint16_t nodeId, uint8_t deviceId, CommandType cmd, const uint8_t* value) {
+void sendMqttCommandToDevice(uint16_t deviceId, uint8_t entityId, CommandType cmd, const uint8_t* value) {
   LoRaMessage cmdMsg;
-  cmdMsg.nodeId = nodeId;
   cmdMsg.deviceId = deviceId;
+  cmdMsg.entityId = entityId;
   cmdMsg.messageType = 3;  // Command message
   cmdMsg.command = cmd;
   
   memcpy(cmdMsg.commandValue, value, 4);
   
-  // Determine device type for the command
-  DeviceInfo* device = nodeRegistry.getDevice(nodeId, deviceId);
-  if (device) {
-    cmdMsg.deviceType = device->type;
-    cmdMsg.valueType = device->valueType;
+  // Determine entity type for the command
+  EntityInfo* entity = deviceRegistry.getEntity(deviceId, entityId);
+  if (entity) {
+    cmdMsg.entityType = entity->type;
+    cmdMsg.valueType = entity->valueType;
     
     if (loRa.sendMessage(cmdMsg)) {
-      Serial.print("Command sent to Node ");
-      Serial.print(nodeId);
-      Serial.print(", Device ");
-      Serial.println(deviceId);
+      Serial.print("Command sent to Device ");
+      Serial.print(deviceId);
+      Serial.print(", Entity ");
+      Serial.println(entityId);
     } else {
       Serial.println("Failed to send command!");
     }
   }
 }
 
-void publishNodeDiscovery(uint16_t nodeId, uint8_t deviceId) {
-  DeviceInfo* device = nodeRegistry.getDevice(nodeId, deviceId);
-  if (device) {
-    if (mqtt.publishDiscovery(*device, "lora_gateway")) {
-      Serial.print("Published Home Assistant discovery for device ");
-      Serial.println(device->name);
+void publishDeviceDiscovery(uint16_t deviceId, uint8_t entityId) {
+  EntityInfo* entity = deviceRegistry.getEntity(deviceId, entityId);
+  if (entity) {
+    if (mqtt.publishDiscovery(*entity, "lora_gateway")) {
+      Serial.print("Published Home Assistant discovery for entity ");
+      Serial.println(entity->name);
     } else {
       Serial.println("Failed to publish discovery!");
     }
