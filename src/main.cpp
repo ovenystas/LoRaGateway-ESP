@@ -196,14 +196,20 @@ static void setupMqtt() {
                    MQTT_PASSWORD)) {
     Serial.println(" Connected.");
 
-    // Resubscribe to all entity command topics
+    // Resubscribe to all entity command topics for entities that can receive
+    // commands
     uint8_t deviceCount = 0;
     DeviceInfo** devices = deviceRegistry.getAllDevices(deviceCount);
     if (devices) {
       for (uint8_t i = 0; i < deviceCount; i++) {
         for (uint8_t j = 0; j < devices[i]->entityCount; j++) {
-          mqtt.subscribeToCommands(devices[i]->deviceId,
-                                   devices[i]->entities[j].entityId);
+          // Only subscribe to command topics for entities that can receive
+          // commands
+          if (devices[i]->entities[j].domain.getDomain() ==
+              EntityDomain::Domain::COVER) {
+            mqtt.subscribeToCommands(devices[i]->deviceId,
+                                     devices[i]->entities[j].entityId);
+          }
         }
       }
     }
@@ -243,8 +249,10 @@ static void onDiscoveryMessage(uint8_t deviceId,
     Serial.println(entity.getName());
     entity.print(Serial, 2);
 
-    // Subscribe to command topic for this entity if MQTT is connected
-    if (mqtt.isConnected()) {
+    // Subscribe to command topic for entities that can receive commands (e.g.,
+    // covers)
+    if (mqtt.isConnected() &&
+        entity.domain.getDomain() == EntityDomain::Domain::COVER) {
       mqtt.subscribeToCommands(deviceId, discovery.entityId);
       Serial.print("Subscribed to command topic for Entity ");
       Serial.println(discovery.entityId);
