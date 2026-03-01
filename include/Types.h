@@ -6,6 +6,7 @@
 
 #include <cstring>
 #include <memory>
+#include <vector>
 
 #include "BinarySensorDeviceClass.h"
 #include "CoverDeviceClass.h"
@@ -160,52 +161,6 @@ struct Format {
   }
 };
 
-// Discovery item for discovery messages
-struct DiscoveryItem {
-  uint8_t entityId;
-  EntityDomain domain;
-  std::unique_ptr<DeviceClass> deviceClass;
-  Unit unit;
-  Format format;
-
-  uint8_t toByteArray(uint8_t* buf) const {
-    buf[0] = entityId;
-    buf[1] = domain.toByte();
-    buf[2] = deviceClass ? deviceClass->toByte() : 0;
-    buf[3] = unit.toByte();
-    buf[4] = format.toByte();
-    return 5;
-  }
-
-  uint8_t fromByteArray(const uint8_t* buf) {
-    entityId = buf[0];
-    domain = EntityDomain(buf[1]);
-    deviceClass = createDeviceClass(domain, buf[2]);
-    unit = Unit(buf[3]);
-    format.fromByte(buf[4]);
-    return 5;
-  }
-
- private:
-  std::unique_ptr<DeviceClass> createDeviceClass(EntityDomain domain,
-                                                 uint8_t classValue) const {
-    switch (domain.getDomain()) {
-      case EntityDomain::Domain::BINARY_SENSOR:
-        return std::unique_ptr<DeviceClass>(
-            new BinarySensorDeviceClass(classValue));
-      case EntityDomain::Domain::COVER:
-        return std::unique_ptr<DeviceClass>(new CoverDeviceClass(classValue));
-      case EntityDomain::Domain::SENSOR:
-        return std::unique_ptr<DeviceClass>(new SensorDeviceClass(classValue));
-      default:
-        return std::unique_ptr<DeviceClass>(nullptr);
-    }
-  }
-
- public:
-  static constexpr uint8_t size() { return 5; }
-};
-
 // Config item for config messages
 struct ConfigItem {
   uint8_t configId;
@@ -242,6 +197,84 @@ struct ConfigItem {
   }
 
   static constexpr uint8_t size() { return 11; }
+};
+
+// Discovery item for discovery messages
+struct DiscoveryItem {
+  uint8_t entityId;
+  EntityDomain domain;
+  std::unique_ptr<DeviceClass> deviceClass;
+  Unit unit;
+  Format format;
+  std::vector<ConfigItem> configItems;
+
+  uint8_t toByteArray(uint8_t* buf) const {
+    buf[0] = entityId;
+    buf[1] = domain.toByte();
+    buf[2] = deviceClass ? deviceClass->toByte() : 0;
+    buf[3] = unit.toByte();
+    buf[4] = format.toByte();
+    return 5;
+  }
+
+  uint8_t fromByteArray(const uint8_t* buf, uint8_t len) {
+    uint8_t offset = 0;
+
+    if (len < 6) {
+      return 0;  // Not enough data
+    }
+
+    entityId = buf[offset++];
+    domain = EntityDomain(buf[offset++]);
+    deviceClass = createDeviceClass(domain, buf[offset++]);
+    unit = Unit(buf[offset++]);
+    format.fromByte(buf[offset++]);
+
+    uint8_t numConfigItems = buf[offset++];
+    configItems.clear();
+
+    for (uint8_t i = 0; i < numConfigItems; i++) {
+      if (offset + 11 > len) {
+        break;  // Not enough data for config item
+      }
+
+      ConfigItem configItem;
+      configItem.configId = buf[offset++];
+      configItem.unit = Unit(buf[offset++]);
+      configItem.format = buf[offset++];
+      configItem.minValue = ((int32_t)buf[offset] << 24) |
+                            ((int32_t)buf[offset + 1] << 16) |
+                            ((int32_t)buf[offset + 2] << 8) | buf[offset + 3];
+      offset += 4;
+      configItem.maxValue = ((int32_t)buf[offset] << 24) |
+                            ((int32_t)buf[offset + 1] << 16) |
+                            ((int32_t)buf[offset + 2] << 8) | buf[offset + 3];
+      offset += 4;
+
+      configItems.push_back(configItem);
+    }
+
+    return offset;
+  }
+
+ private:
+  std::unique_ptr<DeviceClass> createDeviceClass(EntityDomain domain,
+                                                 uint8_t classValue) const {
+    switch (domain.getDomain()) {
+      case EntityDomain::Domain::BINARY_SENSOR:
+        return std::unique_ptr<DeviceClass>(
+            new BinarySensorDeviceClass(classValue));
+      case EntityDomain::Domain::COVER:
+        return std::unique_ptr<DeviceClass>(new CoverDeviceClass(classValue));
+      case EntityDomain::Domain::SENSOR:
+        return std::unique_ptr<DeviceClass>(new SensorDeviceClass(classValue));
+      default:
+        return std::unique_ptr<DeviceClass>(nullptr);
+    }
+  }
+
+ public:
+  static constexpr uint8_t size() { return 5; }
 };
 
 // Service item for service messages
@@ -287,6 +320,7 @@ struct EntityInfo {
   std::unique_ptr<DeviceClass> deviceClass;
   Format format;
   Unit unit;
+  std::vector<ConfigItem> configItems;
 
   EntityInfo() = default;
 
@@ -297,7 +331,8 @@ struct EntityInfo {
         domain(other.domain),
         deviceClass(copyDeviceClass(other.deviceClass)),
         format(other.format),
-        unit(other.unit) {}
+        unit(other.unit),
+        configItems(other.configItems) {}
 
   // Copy assignment operator
   EntityInfo& operator=(const EntityInfo& other) {
@@ -308,6 +343,7 @@ struct EntityInfo {
       deviceClass = copyDeviceClass(other.deviceClass);
       format = other.format;
       unit = other.unit;
+      configItems = other.configItems;
     }
     return *this;
   }

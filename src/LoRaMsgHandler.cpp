@@ -52,7 +52,7 @@ void LoRaMsgHandler::handleMessage(const LoRaRxMessage& msg) {
       // Parse discovery payload
       if (msg.payloadLength >= DiscoveryItem::size()) {
         DiscoveryItem discovery;
-        discovery.fromByteArray(msg.payload);
+        discovery.fromByteArray(msg.payload, msg.payloadLength);
 
         Serial.print("    Entity ID: ");
         Serial.print(discovery.entityId);
@@ -69,7 +69,9 @@ void LoRaMsgHandler::handleMessage(const LoRaRxMessage& msg) {
         Serial.print(1 << discovery.format.size);
         Serial.print(" bytes, ");
         Serial.print(discovery.format.precision);
-        Serial.println(" decimals)");
+        Serial.print(" decimals)");
+        Serial.print(", Config Items: ");
+        Serial.println(discovery.configItems.size());
 
         uint8_t deviceId = msg.header.src;
         onDiscoveryMessage(deviceId, discovery);

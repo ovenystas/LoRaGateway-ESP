@@ -37,6 +37,10 @@ class MqttHandler {
   // Publish discovery message for Home Assistant
   bool publishDiscovery(const EntityInfo& entity, const char* nodePrefix);
 
+  // Publish config item discovery message for Home Assistant
+  bool publishConfigDiscovery(const EntityInfo& entity, const ConfigItem& config,
+                              const char* nodePrefix);
+
   // Set callback for received MQTT messages
   void setOnMessageReceived(void (*callback)(const char* topic,
                                              const byte* payload,

@@ -243,6 +243,7 @@ static void onDiscoveryMessage(uint8_t deviceId,
   entity.setDeviceClass(discovery.deviceClass);
   entity.format = discovery.format;
   entity.unit = discovery.unit;
+  entity.configItems = discovery.configItems;
 
   if (deviceRegistry.registerEntity(deviceId, entity)) {
     Serial.print("Entity registered: ");
@@ -260,6 +261,11 @@ static void onDiscoveryMessage(uint8_t deviceId,
 
     // Publish Home Assistant discovery for this entity
     publishDeviceDiscovery(deviceId, discovery);
+
+    // Publish Home Assistant discovery for all config items
+    for (const ConfigItem& config : entity.configItems) {
+      mqtt.publishConfigDiscovery(entity, config, MQTT_CLIENT_ID);
+    }
   }
 }
 
