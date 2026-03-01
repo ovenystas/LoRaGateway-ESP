@@ -243,6 +243,13 @@ static void onDiscoveryMessage(uint8_t deviceId,
     Serial.println(entity.getName());
     entity.print(Serial, 2);
 
+    // Subscribe to command topic for this entity if MQTT is connected
+    if (mqtt.isConnected()) {
+      mqtt.subscribeToCommands(deviceId, discovery.entityId);
+      Serial.print("Subscribed to command topic for Entity ");
+      Serial.println(discovery.entityId);
+    }
+
     // Publish Home Assistant discovery for this entity
     publishDeviceDiscovery(deviceId, discovery);
   }

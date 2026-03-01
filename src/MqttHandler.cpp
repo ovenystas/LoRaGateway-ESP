@@ -95,15 +95,17 @@ bool MqttHandler::publishSensorValues(
 
 bool MqttHandler::subscribeToCommands(uint8_t deviceId, uint8_t entityId) {
   char topic[128];
+
   snprintf(topic, sizeof(topic), "lora-gw/device_%u/entity_%u/command",
            deviceId, entityId);
+
   return client.subscribe(topic);
 }
 
 /*
  * Examples:
- *  topic: homeassistant/sensor/lora_1/entity_0/config
- *  topic: homeassistant/sensor/lora_1/entity_1/config
+ *  topic: homeassistant/cover/lora_1/0_garage/config
+ *  topic: homeassistant/sensor/lora_1/1_temperature/config
  */
 bool MqttHandler::publishDiscovery(const EntityInfo& entity,
                                    const char* nodePrefix) {
