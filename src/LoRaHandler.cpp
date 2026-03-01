@@ -1,9 +1,14 @@
 #include "LoRaHandler.h"
+
 #include <LoRa.h>
+
 #include <cstring>
 
 LoRaHandler::LoRaHandler(int csPin, int rstPin, int dioPin)
-    : csPin(csPin), rstPin(rstPin), dioPin(dioPin), onMessageReceived(nullptr) {}
+    : csPin(csPin),
+      rstPin(rstPin),
+      dioPin(dioPin),
+      onMessageReceived(nullptr) {}
 
 bool LoRaHandler::begin(long frequency) {
   // Set LoRa pins
@@ -73,6 +78,19 @@ void LoRaHandler::handle() {
       if (len >= (int)sizeof(buffer)) break;
     }
 
+    Serial.print("\nLoRa message received, raw: H:");
+    int i = 0;
+    for (; i < LORA_HEADER_LENGTH; i++) {
+      Serial.print(buffer[i], HEX);
+      Serial.print(" ");
+    }
+    Serial.print(" P:");
+    for (; i < len; i++) {
+      Serial.print(buffer[i], HEX);
+      Serial.print(" ");
+    }
+    Serial.println();
+
     if (decodeMessage(buffer, len, msg)) {
       msg.rssi = LoRa.packetRssi();
       if (onMessageReceived) {
@@ -82,8 +100,8 @@ void LoRaHandler::handle() {
   }
 }
 
-void LoRaHandler::setDefaultHeader(LoRaHeader& header, uint8_t dst, uint8_t src, uint8_t id,
-                                     LoRaMsgType msgType) {
+void LoRaHandler::setDefaultHeader(LoRaHeader& header, uint8_t dst, uint8_t src,
+                                   uint8_t id, LoRaMsgType msgType) {
   header.dst = dst;
   header.src = src;
   header.id = id;
@@ -92,7 +110,8 @@ void LoRaHandler::setDefaultHeader(LoRaHeader& header, uint8_t dst, uint8_t src,
   header.flags.ack_request = false;
 }
 
-uint8_t LoRaHandler::encodeMessage(const LoRaTxMessage& msg, uint8_t* buffer, uint8_t maxLen) {
+uint8_t LoRaHandler::encodeMessage(const LoRaTxMessage& msg, uint8_t* buffer,
+                                   uint8_t maxLen) {
   if (maxLen < LORA_HEADER_LENGTH) {
     return 0;
   }
@@ -114,7 +133,8 @@ uint8_t LoRaHandler::encodeMessage(const LoRaTxMessage& msg, uint8_t* buffer, ui
   return pos;
 }
 
-bool LoRaHandler::decodeMessage(const uint8_t* buffer, uint8_t len, LoRaRxMessage& msg) {
+bool LoRaHandler::decodeMessage(const uint8_t* buffer, uint8_t len,
+                                LoRaRxMessage& msg) {
   if (len < LORA_HEADER_LENGTH) {
     return false;
   }

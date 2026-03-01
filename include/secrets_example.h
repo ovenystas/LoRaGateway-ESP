@@ -11,6 +11,6 @@
 // MQTT Configuration
 #define MQTT_BROKER "192.168.1.100"
 #define MQTT_PORT 1883
-#define MQTT_CLIENT_ID "lora_gateway"
-#define MQTT_USERNAME ""          // Leave empty if no auth required
-#define MQTT_PASSWORD ""          // Leave empty if no auth required
+#define MQTT_CLIENT_ID "lora-gw"
+#define MQTT_USERNAME ""  // Leave empty if no auth required
+#define MQTT_PASSWORD ""  // Leave empty if no auth required

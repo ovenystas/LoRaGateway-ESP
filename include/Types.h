@@ -1,7 +1,17 @@
 #pragma once
 
+#include <Arduino.h>
+#include <Print.h>
 #include <stdint.h>
+
 #include <cstring>
+#include <memory>
+
+#include "BinarySensorDeviceClass.h"
+#include "CoverDeviceClass.h"
+#include "DeviceClass.h"
+#include "SensorDeviceClass.h"
+#include "Unit.h"
 
 #define LORA_MAX_MESSAGE_LENGTH 100
 #define LORA_HEADER_LENGTH 4
@@ -28,71 +38,6 @@ enum class LoRaMsgType : uint8_t {
 #define FLAGS_REQ_ACK_SHIFT 6
 #define FLAGS_MSG_TYPE_MASK 0x0F
 #define FLAGS_MSG_TYPE_SHIFT 0
-
-// Entity types supported
-enum class EntityType : uint8_t {
-  BINARY_SENSOR = 0,
-  SENSOR = 1,
-  SWITCH = 2,
-  COVER = 3
-};
-
-// Entity Device Classes
-enum class BinarySensorDeviceClass : uint8_t {
-  none = 0,
-  battery = 1,
-  cold = 2,
-  heat = 3,
-  connectivity = 4,
-  door = 5,
-  garageDoor = 6,
-  opening = 7,
-  window = 8,
-  lock = 9,
-  moisture = 10,
-  gas = 11,
-  motion = 12,
-  occupancy = 13,
-  smoke = 14,
-  sound = 15,
-  vibration = 16,
-  presence = 17,
-  problem = 18,
-  safety = 19
-};
-
-enum class SensorDeviceClass : uint8_t {
-  none = 0,
-  battery = 1,
-  humidity = 2,
-  distance = 3
-};
-
-enum class CoverDeviceClass : uint8_t {
-  none = 0,
-  garage = 1
-};
-
-// Unit types
-enum class Unit : uint8_t {
-  none = 0,
-  celsius = 1,
-  fahrenheit = 2,
-  percent = 3,
-  mm = 4,
-  cm = 5,
-  m = 6,
-  km = 7,
-  unknown = 255
-};
-
-// Value types for metadata
-enum class ValueType : uint8_t {
-  BOOLEAN = 0,
-  INT_VALUE = 1,
-  FLOAT_VALUE = 2,
-  STRING = 3
-};
 
 // LoRa Header with flags
 struct LoRaHeaderFlags {
@@ -161,32 +106,103 @@ struct ValueItem {
   static constexpr uint8_t size() { return 5; }
 };
 
+// Entity Domain definition
+class EntityDomain {
+ public:
+  enum class Domain : uint8_t { BINARY_SENSOR = 0, SENSOR = 1, COVER = 2 };
+
+  EntityDomain() : domain(Domain::SENSOR) {}
+  EntityDomain(Domain d) : domain(d) {}
+  EntityDomain(uint8_t d) : domain(static_cast<Domain>(d)) {}
+
+  const char* getName() const;
+  Domain getDomain() const { return domain; }
+  uint8_t toByte() const { return static_cast<uint8_t>(domain); }
+
+ private:
+  Domain domain;
+};
+
+// Format for discovery/config messages
+// Bit 4: 0=unsigned, 1=signed
+// Bits 3-2: size
+// Bits 1-0: precision
+struct Format {
+  bool isSigned;
+  uint8_t size;       // 0=1 byte, 1=2 bytes, 2=4 bytes
+  uint8_t precision;  // Number of decimal places (0-3) for floats
+
+  uint8_t toByte() const {
+    uint8_t b = (isSigned ? 0x10 : 0x00);
+    b |= ((size & 0x03) << 2);
+    b |= (precision & 0x03);
+    return b;
+  }
+
+  void fromByte(uint8_t b) {
+    isSigned = (b & 0x10) != 0;
+    size = (b >> 2) & 0x03;
+    precision = b & 0x03;
+  }
+
+  float scaleValue(int32_t rawValue) const {
+    return static_cast<float>(rawValue) / pow(10, precision);
+  }
+
+  size_t print(Print& printer, int32_t rawValue) const {
+    float value = scaleValue(rawValue);
+    return printer.print(value, precision);
+  }
+
+  size_t println(Print& printer, int32_t rawValue) const {
+    float value = scaleValue(rawValue);
+    return printer.println(value, precision);
+  }
+};
+
 // Discovery item for discovery messages
 struct DiscoveryItem {
   uint8_t entityId;
-  EntityType type;
-  uint8_t deviceClass;
+  EntityDomain domain;
+  std::unique_ptr<DeviceClass> deviceClass;
   Unit unit;
-  uint8_t format;  // Bits 4: 0=unsigned, 1=signed; Bits 3-2: size; Bits 1-0: precision
+  Format format;
 
   uint8_t toByteArray(uint8_t* buf) const {
     buf[0] = entityId;
-    buf[1] = static_cast<uint8_t>(type);
-    buf[2] = deviceClass;
-    buf[3] = static_cast<uint8_t>(unit);
-    buf[4] = format;
+    buf[1] = domain.toByte();
+    buf[2] = deviceClass ? deviceClass->toByte() : 0;
+    buf[3] = unit.toByte();
+    buf[4] = format.toByte();
     return 5;
   }
 
   uint8_t fromByteArray(const uint8_t* buf) {
     entityId = buf[0];
-    type = static_cast<EntityType>(buf[1]);
-    deviceClass = buf[2];
-    unit = static_cast<Unit>(buf[3]);
-    format = buf[4];
+    domain = EntityDomain(buf[1]);
+    deviceClass = createDeviceClass(domain, buf[2]);
+    unit = Unit(buf[3]);
+    format.fromByte(buf[4]);
     return 5;
   }
 
+ private:
+  std::unique_ptr<DeviceClass> createDeviceClass(EntityDomain domain,
+                                                 uint8_t classValue) const {
+    switch (domain.getDomain()) {
+      case EntityDomain::Domain::BINARY_SENSOR:
+        return std::unique_ptr<DeviceClass>(
+            new BinarySensorDeviceClass(classValue));
+      case EntityDomain::Domain::COVER:
+        return std::unique_ptr<DeviceClass>(new CoverDeviceClass(classValue));
+      case EntityDomain::Domain::SENSOR:
+        return std::unique_ptr<DeviceClass>(new SensorDeviceClass(classValue));
+      default:
+        return std::unique_ptr<DeviceClass>(nullptr);
+    }
+  }
+
+ public:
   static constexpr uint8_t size() { return 5; }
 };
 
@@ -194,13 +210,14 @@ struct DiscoveryItem {
 struct ConfigItem {
   uint8_t configId;
   Unit unit;
-  uint8_t format;  // Bits 4: 0=unsigned, 1=signed; Bits 3-2: size; Bits 1-0: precision
+  uint8_t format;  // Bits 4: 0=unsigned, 1=signed; Bits 3-2: size; Bits 1-0:
+                   // precision
   int32_t minValue;
   int32_t maxValue;
 
   uint8_t toByteArray(uint8_t* buf) const {
     buf[0] = configId;
-    buf[1] = static_cast<uint8_t>(unit);
+    buf[1] = unit.toByte();
     buf[2] = format;
     buf[3] = (minValue >> 24) & 0xFF;
     buf[4] = (minValue >> 16) & 0xFF;
@@ -215,7 +232,7 @@ struct ConfigItem {
 
   uint8_t fromByteArray(const uint8_t* buf) {
     configId = buf[0];
-    unit = static_cast<Unit>(buf[1]);
+    unit = Unit(buf[1]);
     format = buf[2];
     minValue = ((int32_t)buf[3] << 24) | ((int32_t)buf[4] << 16) |
                ((int32_t)buf[5] << 8) | buf[6];
@@ -266,19 +283,109 @@ struct LoRaRxMessage {
 struct EntityInfo {
   uint16_t deviceId;
   uint8_t entityId;
-  EntityType type;
-  const char* name;
-  const char* unit;      // Unit of measurement for sensors
-  ValueType valueType;
-  float minValue;
-  float maxValue;
+  EntityDomain domain;
+  std::unique_ptr<DeviceClass> deviceClass;
+  Format format;
+  Unit unit;
+
+  EntityInfo() = default;
+
+  // Copy constructor for cloning deviceClass
+  EntityInfo(const EntityInfo& other)
+      : deviceId(other.deviceId),
+        entityId(other.entityId),
+        domain(other.domain),
+        deviceClass(copyDeviceClass(other.deviceClass)),
+        format(other.format),
+        unit(other.unit) {}
+
+  // Copy assignment operator
+  EntityInfo& operator=(const EntityInfo& other) {
+    if (this != &other) {
+      deviceId = other.deviceId;
+      entityId = other.entityId;
+      domain = other.domain;
+      deviceClass = copyDeviceClass(other.deviceClass);
+      format = other.format;
+      unit = other.unit;
+    }
+    return *this;
+  }
+
+  String getName() const {
+    String name =
+        deviceClass ? deviceClass->getName() : String("Entity ") + entityId;
+    name[0] = static_cast<std::string::value_type>(toupper(name[0]));
+    return name;
+  }
+
+  void setDeviceClass(const std::unique_ptr<DeviceClass>& source) {
+    deviceClass = copyDeviceClass(source);
+  }
+
+  size_t print(Print& printer, size_t indent = 0) const {
+    size_t n = 0;
+    for (size_t i = 0; i < indent; i++) {
+      n += printer.print(" ");
+    }
+    n += printer.print("Entity ID: ");
+    n += printer.print(entityId);
+    n += printer.print(", Name: ");
+    n += printer.print(getName());
+    n += printer.print(", Domain: ");
+    n += printer.print(domain.getName());
+    n += printer.print(", Device Class: ");
+    n += printer.print(deviceClass ? deviceClass->getName() : "unknown");
+    n += printer.print(", Unit: ");
+    n += printer.println(unit.getName());
+    return n;
+  }
+
+ private:
+  static std::unique_ptr<DeviceClass> copyDeviceClass(
+      const std::unique_ptr<DeviceClass>& source) {
+    if (!source) {
+      return nullptr;
+    }
+    return std::unique_ptr<DeviceClass>(source->clone());
+  }
 };
 
 // Device metadata
 struct DeviceInfo {
   uint16_t deviceId;
-  const char* name;
   uint32_t lastSeen;
   uint8_t entityCount;
   EntityInfo* entities;
+
+  String getName() const { return String("LoRa Device ") + deviceId; }
+
+  EntityInfo* getEntity(uint8_t entityId) const {
+    for (uint8_t i = 0; i < entityCount; i++) {
+      if (entities[i].entityId == entityId) {
+        return &entities[i];
+      }
+    }
+    return nullptr;
+  }
+
+  size_t print(Print& printer, size_t indent = 0) const {
+    size_t n = 0;
+    for (size_t i = 0; i < indent; i++) {
+      n += printer.print(" ");
+    }
+    n += printer.print("Device ID: ");
+    n += printer.print(deviceId);
+    n += printer.print(", Name: ");
+    n += printer.print(getName());
+    n += printer.print(", Last Seen: ");
+    n += printer.print(lastSeen);
+    n += printer.print(", Entity Count: ");
+    n += printer.println(entityCount);
+
+    for (uint8_t i = 0; i < entityCount; i++) {
+      n += entities[i].print(printer, indent + 2);
+    }
+    return n;
+  }
 };

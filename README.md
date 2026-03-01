@@ -139,7 +139,7 @@ All settings are in `include/secrets.h`:
 // MQTT broker
 #define MQTT_BROKER "192.168.1.100"
 #define MQTT_PORT 1883
-#define MQTT_CLIENT_ID "lora_gateway"
+#define MQTT_CLIENT_ID "lora-gw"
 #define MQTT_USERNAME "user"      // Optional
 #define MQTT_PASSWORD "password"  // Optional
 
@@ -156,7 +156,7 @@ All settings are in `include/secrets.h`:
 ## Message Topics and Payloads
 
 ### State Publishing (Gateway → MQTT)
-Topic: `lora_gateway/device_{deviceId}/entity_{entityId}/state`
+Topic: `lora-gw/device_{deviceId}/entity_{entityId}/state`
 ```json
 {
   "value": 23.5,
@@ -166,7 +166,7 @@ Topic: `lora_gateway/device_{deviceId}/entity_{entityId}/state`
 ```
 
 ### Commands (MQTT → Gateway → LoRa)
-Topic: `lora_gateway/device_{deviceId}/entity_{entityId}/command`
+Topic: `lora-gw/device_{deviceId}/entity_{entityId}/command`
 ```json
 {"command": "ON"}     // BinarySensor/Switch
 {"command": "OFF"}    // BinarySensor/Switch
@@ -300,7 +300,7 @@ Restart Home Assistant. Devices appear under **Settings → Devices & Services �
 
 ### Adding a New Entity Type
 
-1. Add type to `EntityType` enum in [include/Types.h](include/Types.h)
+1. Add type to `EntityDomain` enum in [include/Types.h](include/Types.h)
 2. Add device class enum if needed (e.g., `NewDeviceClass`)
 3. Update discovery parsing in [src/main.cpp](src/main.cpp) `handleLoRaMessage()`
 4. Update MQTT discovery topic in [src/MqttHandler.cpp](src/MqttHandler.cpp)
