@@ -9,28 +9,36 @@ MqttHandler::MqttHandler(WiFiClient& wifiClient)
   client.setBufferSize(MQTT_BUFFER_SIZE);
 }
 
-bool MqttHandler::connect(const char* broker, uint16_t port,
-                          const char* clientId) {
-  client.setServer(broker, port);
+void MqttHandler::setupCallback() {
   client.setCallback([this](char* topic, byte* payload, unsigned int length) {
     if (onMessageReceived) {
       onMessageReceived(topic, payload, length);
     }
   });
+}
 
+bool MqttHandler::connect(const char* broker, uint16_t port,
+                          const char* clientId) {
+  if (!broker || !clientId) {
+    Serial.println(F("Error: broker or clientId is null"));
+    return false;
+  }
+
+  client.setServer(broker, port);
+  setupCallback();
   return client.connect(clientId);
 }
 
 bool MqttHandler::connect(const char* broker, uint16_t port,
                           const char* clientId, const char* username,
                           const char* password) {
-  client.setServer(broker, port);
-  client.setCallback([this](char* topic, byte* payload, unsigned int length) {
-    if (onMessageReceived) {
-      onMessageReceived(topic, payload, length);
-    }
-  });
+  if (!broker || !clientId || !username || !password) {
+    Serial.println(F("Error: broker, clientId, username, or password is null"));
+    return false;
+  }
 
+  client.setServer(broker, port);
+  setupCallback();
   return client.connect(clientId, username, password);
 }
 
@@ -110,15 +118,18 @@ bool MqttHandler::subscribeToCommands(uint8_t deviceId, uint8_t entityId) {
  */
 bool MqttHandler::publishDiscovery(const EntityInfo& entity,
                                    const char* nodePrefix) {
+  if (!nodePrefix) {
+    Serial.println(F("Error: nodePrefix is null"));
+    return false;
+  }
+
   Serial.print(F("Publishing discovery for entity: "));
   Serial.print(entity.entityId);
   Serial.print(':');
   Serial.println(entity.name);
 
   char topic[128];
-#if 1
   char payload[512];
-#endif
 
   const char* componentType = entity.domain.getName();
 
@@ -135,8 +146,9 @@ bool MqttHandler::publishDiscovery(const EntityInfo& entity,
   doc["name"] = entity.name;
   doc["unique_id"] = String("lora_") + entity.deviceId + "_" + entity_id_name;
   doc["object_id"] = String("lora_") + entity.deviceId + "_" + entity_id_name;
-  doc["device_class"] =
-      entity.deviceClass ? entity.deviceClass->getName() : "unknown";
+  if (entity.deviceClass) {
+    doc["device_class"] = entity.deviceClass->getName();
+  }
 
   // State topic
   char stateTopic[128];
@@ -170,7 +182,6 @@ bool MqttHandler::publishDiscovery(const EntityInfo& entity,
            entity.deviceClass ? entity.deviceClass->getName() : "unknown");
   Serial.print(F("Value template: "));
   Serial.println(valueTemplate);
-#if 1
   doc["value_template"] = valueTemplate;
 
   // Device info
@@ -190,15 +201,13 @@ bool MqttHandler::publishDiscovery(const EntityInfo& entity,
   }
 
   serializeJson(doc, payload, sizeof(payload));
-#endif
+
   Serial.print("Publishing discovery for entity: ");
   Serial.println(entity.name);
   Serial.print("    topic: ");
   Serial.println(topic);
-#if 1
   Serial.print("    Payload: ");
   Serial.println(payload);
-#endif
   const bool result =
       client.publish(topic, payload, true);  // Retain discovery message
 
@@ -213,7 +222,9 @@ void MqttHandler::setOnMessageReceived(void (*callback)(const char*,
 
 void MqttHandler::handle() {
   if (!client.connected()) {
-    // Attempt reconnection could go here if needed
+    Serial.println(F("MQTT reconnecting..."));
+    // Attempt reconnection (non-blocking, returns immediately if fails)
+    client.connect("LoRaGateway");
   } else {
     client.loop();
   }

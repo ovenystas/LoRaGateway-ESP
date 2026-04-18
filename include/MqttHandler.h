@@ -50,7 +50,6 @@ class MqttHandler {
   WiFiClient& wifiClient;
   void (*onMessageReceived)(const char*, const byte*, unsigned int);
 
-  // Helper to build MQTT topic strings
-  static void buildTopic(char* buffer, size_t size, uint8_t deviceId,
-                         uint8_t entityId, const char* suffix);
+  // Helper to configure MQTT callback
+  void setupCallback();
 };
