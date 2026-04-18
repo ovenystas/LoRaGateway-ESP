@@ -36,6 +36,9 @@ class LoRaHandler {
                                uint8_t id = 0,
                                LoRaMsgType msgType = LoRaMsgType::ping_req);
 
+  static void printMessage(const LoRaTxMessage& msg);
+  static void printMessage(const LoRaRxMessage& msg);
+
  private:
   int csPin;
   int rstPin;

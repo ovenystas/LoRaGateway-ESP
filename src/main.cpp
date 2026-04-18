@@ -8,6 +8,7 @@
 #include "MqttHandler.h"
 #include "MqttMsgHandler.h"
 #include "Types.h"
+#include "Util.h"
 
 #define VERSION_MAJOR 0
 #define VERSION_MINOR 0
@@ -74,7 +75,7 @@ void setup() {
   }
 
   // Send initial discovery request to all devices
-  Serial.println("Sending initial discovery request to all devices...");
+  Serial.println(F("Sending initial discovery request to all devices..."));
   loRaMsg.sendDiscoveryRequest(LoRaMsgHandler::LORA_BROADCAST_ADDRESS);
 }
 
@@ -82,7 +83,7 @@ void setup() {
 void loop() {
   // Handle WiFi reconnection
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi disconnected, attempting to reconnect...");
+    Serial.println(F("WiFi disconnected, attempting to reconnect..."));
     setupWiFi();
   }
 
@@ -104,9 +105,9 @@ void loop() {
       for (uint8_t i = 0; i < deviceCount; i++) {
         if (currentTime - devices[i]->lastSeen >
             (NODE_TIMEOUT_SECONDS * 1000)) {
-          Serial.print("Device ");
+          Serial.print(F("Device "));
           Serial.print(devices[i]->deviceId);
-          Serial.println(" has timed out - removing from registry");
+          Serial.println(F(" has timed out - removing from registry"));
           deviceRegistry.unregisterDevice(devices[i]->deviceId);
         }
       }
@@ -121,7 +122,7 @@ void loop() {
     const uint8_t targetDeviceId = 1;
     loRaMsg.sendPingRequest(targetDeviceId);
 
-    Serial.print("Sent ping request to Device ");
+    Serial.print(F("Sent ping request to Device "));
     Serial.println(targetDeviceId);
   }
 #endif
@@ -151,18 +152,18 @@ static void printWelcomeMessage(void) {
 }
 
 static void setupLoRa() {
-  Serial.print("Initializing LoRa.");
+  Serial.print(F("Initializing LoRa."));
   if (!loRa.begin(LORA_FREQUENCY)) {
-    Serial.println(" Failed!");
+    Serial.println(F(" Failed!"));
     while (1) {
       delay(1000);
     }
   }
-  Serial.println(" OK.");
+  Serial.println(F(" OK."));
 }
 
 static void setupWiFi() {
-  Serial.print("Connecting to WiFi SSID");
+  Serial.print(F("Connecting to WiFi SSID"));
   Serial.print(WIFI_SSID);
   Serial.print('.');
 
@@ -177,24 +178,24 @@ static void setupWiFi() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.print(" Connected. IP address=");
+    Serial.print(F(" Connected. IP address="));
     Serial.print(WiFi.localIP());
     Serial.println('.');
   } else {
-    Serial.println(" Failed! Will retry in main loop.");
+    Serial.println(F(" Failed! Will retry in main loop."));
   }
 }
 
 static void setupMqtt() {
-  Serial.print("Connecting to MQTT broker at ");
+  Serial.print(F("Connecting to MQTT broker at "));
   Serial.print(MQTT_BROKER);
-  Serial.print(":");
+  Serial.print(':');
   Serial.print(MQTT_PORT);
   Serial.print('.');
 
   if (mqtt.connect(MQTT_BROKER, MQTT_PORT, MQTT_CLIENT_ID, MQTT_USERNAME,
                    MQTT_PASSWORD)) {
-    Serial.println(" Connected.");
+    Serial.println(F(" Connected."));
 
     // Resubscribe to all entity command topics for entities that can receive
     // commands
@@ -214,21 +215,21 @@ static void setupMqtt() {
       }
     }
   } else {
-    Serial.println(" Failed!");
+    Serial.println(F(" Failed!"));
   }
 }
 
 static void onDiscoveryMessage(uint8_t deviceId,
                                const DiscoveryItem& discovery) {
-  Serial.print("New entity discovered on Device ");
+  Serial.print(F("New entity discovered on Device "));
   Serial.print(deviceId);
-  Serial.print("! Entity ID: ");
+  Serial.print(F("! Entity ID: "));
   Serial.println(discovery.entityId);
 
   // Register the device
   String deviceName = String("LoRa Device ") + deviceId;
   if (!deviceRegistry.registerDevice(deviceId, deviceName.c_str())) {
-    Serial.println("Failed to register device!");
+    Serial.println(F("Failed to register device!"));
     return;
   }
   deviceRegistry.updateDeviceLastSeen(deviceId);
@@ -241,13 +242,16 @@ static void onDiscoveryMessage(uint8_t deviceId,
   entity.entityId = discovery.entityId;
   entity.domain = discovery.domain;
   entity.setDeviceClass(discovery.deviceClass);
+  entity.category = discovery.category;
   entity.format = discovery.format;
   entity.unit = discovery.unit;
-  entity.configItems = discovery.configItems;
+  entity.minValue = discovery.minValue;
+  entity.maxValue = discovery.maxValue;
+  entity.name = discovery.name;
 
   if (deviceRegistry.registerEntity(deviceId, entity)) {
-    Serial.print("Entity registered: ");
-    Serial.println(entity.getName());
+    Serial.print(F("Entity registered: "));
+    Serial.println(entity.name);
     entity.print(Serial, 2);
 
     // Subscribe to command topic for entities that can receive commands (e.g.,
@@ -255,23 +259,19 @@ static void onDiscoveryMessage(uint8_t deviceId,
     if (mqtt.isConnected() &&
         entity.domain.getDomain() == EntityDomain::Domain::COVER) {
       mqtt.subscribeToCommands(deviceId, discovery.entityId);
-      Serial.print("Subscribed to command topic for Entity ");
+      Serial.print(F("Subscribed to command topic for Entity "));
       Serial.println(discovery.entityId);
     }
 
     // Publish Home Assistant discovery for this entity
+    Serial.println(F("Publishing Home Assistant discovery..."));
     publishDeviceDiscovery(deviceId, discovery);
-
-    // Publish Home Assistant discovery for all config items
-    for (const ConfigItem& config : entity.configItems) {
-      mqtt.publishConfigDiscovery(entity, config, MQTT_CLIENT_ID);
-    }
   }
 }
 
 static void onValueMessage(uint8_t deviceId,
                            const std::vector<ValueItem>& valueItems) {
-  Serial.print("Value message from Device ");
+  Serial.print(F("Value message from Device "));
   Serial.print(deviceId);
   Serial.println(':');
 
@@ -282,29 +282,29 @@ static void onValueMessage(uint8_t deviceId,
   for (const ValueItem& valueItem : valueItems) {
     EntityInfo* entity = device->getEntity(valueItem.entityId);
     if (entity) {
-      Serial.print("    Value for entity ");
-      Serial.print(entity->getName());
+      Serial.print(F("    Value for entity "));
+      Serial.print(entity->name);
       Serial.print(": ");
       float scaledValue = entity->format.scaleValue(valueItem.value);
-      Serial.print(scaledValue, entity->format.precision);
+      Serial.print(scaledValue, entity->format.getPrecision());
       Serial.print(' ');
       Serial.println(entity->unit.getName());
     } else {
-      Serial.println("    Entity not found, sending discovery request");
+      Serial.println(F("    Entity not found, sending discovery request"));
       loRaMsg.sendDiscoveryRequest(deviceId, valueItem.entityId);
     }
   }
 
   // Forward sensor values to MQTT
   mqtt.publishSensorValues(*device, valueItems);
-  Serial.println("    Published sensor values");
+  Serial.println(F("    Published sensor values"));
 }
 
 static void sendMqttCommandToDevice(uint8_t deviceId, uint8_t entityId,
                                     int32_t value) {
   LoRaTxMessage cmdMsg;
   LoRaHandler::setDefaultHeader(cmdMsg.header, deviceId, 0, 0,
-                                LoRaMsgType::configSet_req);
+                                LoRaMsgType::valueSet_req);
 
   // Create a simple command payload with the value
   cmdMsg.payloadLength = 0;
@@ -317,14 +317,14 @@ static void sendMqttCommandToDevice(uint8_t deviceId, uint8_t entityId,
   cmdMsg.payload[cmdMsg.payloadLength++] = value & 0xFF;
 
   if (loRa.sendMessage(cmdMsg)) {
-    Serial.print("Command sent to Device ");
+    Serial.print(F("Command sent to Device "));
     Serial.print(deviceId);
-    Serial.print(", Entity ");
+    Serial.print(F(", Entity "));
     Serial.print(entityId);
-    Serial.print(", Value: ");
+    Serial.print(F(", Value: "));
     Serial.println(value);
   } else {
-    Serial.println("Failed to send command!");
+    Serial.println(F("Failed to send command!"));
   }
 }
 
@@ -333,10 +333,13 @@ static void publishDeviceDiscovery(uint8_t deviceId,
   EntityInfo* entity = deviceRegistry.getEntity(deviceId, discovery.entityId);
   if (entity) {
     if (mqtt.publishDiscovery(*entity, MQTT_CLIENT_ID)) {
-      Serial.print("Published Home Assistant discovery for entity ");
-      Serial.println(entity->getName());
+      Serial.print(F("Published Home Assistant discovery for entity "));
+      Serial.println(entity->name);
     } else {
-      Serial.println("Failed to publish discovery!");
+      Serial.println(F("Failed to publish discovery!"));
     }
+  } else {
+    Serial.println(
+        F("WRN: Entity not found in registry, cannot publish discovery"));
   }
 }

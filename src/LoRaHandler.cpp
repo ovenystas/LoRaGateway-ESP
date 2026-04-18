@@ -4,6 +4,8 @@
 
 #include <cstring>
 
+#include "Util.h"
+
 LoRaHandler::LoRaHandler(int csPin, int rstPin, int dioPin)
     : csPin(csPin),
       rstPin(rstPin),
@@ -33,6 +35,10 @@ bool LoRaHandler::sendMessage(const LoRaTxMessage& msg) {
   if (len == 0) {
     return false;
   }
+
+  Serial.print("\nSending LoRa message, raw: ");
+  printMessage(msg);
+  Serial.println();
 
   LoRa.beginPacket();
   LoRa.write(buffer, len);
@@ -78,20 +84,10 @@ void LoRaHandler::handle() {
       if (len >= (int)sizeof(buffer)) break;
     }
 
-    Serial.print("\nLoRa message received, raw: H:");
-    int i = 0;
-    for (; i < LORA_HEADER_LENGTH; i++) {
-      Serial.print(buffer[i], HEX);
-      Serial.print(" ");
-    }
-    Serial.print(" P:");
-    for (; i < len; i++) {
-      Serial.print(buffer[i], HEX);
-      Serial.print(" ");
-    }
-    Serial.println();
-
     if (decodeMessage(buffer, len, msg)) {
+      Serial.print("\nLoRa message received, raw: ");
+      printMessage(msg);
+      Serial.println();
       msg.rssi = LoRa.packetRssi();
       if (onMessageReceived) {
         onMessageReceived(msg);
@@ -156,4 +152,38 @@ bool LoRaHandler::decodeMessage(const uint8_t* buffer, uint8_t len,
   }
 
   return true;
+}
+
+void LoRaHandler::printMessage(const LoRaTxMessage& msg) {
+  Serial.print(F("H: "));
+  uint8_t buf[LORA_HEADER_LENGTH];
+  msg.header.toByteArray(buf);
+  printArray(Serial, buf, LORA_HEADER_LENGTH, HEX);
+
+  Serial.print(F(" P: "));
+  if (msg.payloadLength == 0) {
+    Serial.print(F("--"));
+  } else if (msg.header.flags.ack_response and msg.payloadLength == 1 and
+             msg.payload[0] == '!') {
+    Serial.print(F("(ACK)"));
+  } else {
+    printArray(Serial, msg.payload, msg.payloadLength, HEX);
+  }
+}
+
+void LoRaHandler::printMessage(const LoRaRxMessage& msg) {
+  Serial.print(F("H: "));
+  uint8_t buf[LORA_HEADER_LENGTH];
+  msg.header.toByteArray(buf);
+  printArray(Serial, buf, LORA_HEADER_LENGTH, HEX);
+
+  Serial.print(F(" P: "));
+  if (msg.payloadLength == 0) {
+    Serial.print(F("--"));
+  } else if (msg.header.flags.ack_response and msg.payloadLength == 1 and
+             msg.payload[0] == '!') {
+    Serial.print(F("(ACK)"));
+  } else {
+    printArray(Serial, msg.payload, msg.payloadLength, HEX);
+  }
 }

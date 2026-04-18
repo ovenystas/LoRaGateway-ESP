@@ -56,7 +56,8 @@ bool MqttHandler::publishSensorValues(
     EntityInfo* entity = device.getEntity(valueItem.entityId);
     if (entity) {
       String key =
-          String(entity->entityId) + "_" + entity->deviceClass->getName();
+          String(entity->entityId) + "_" +
+          (entity->deviceClass ? entity->deviceClass->getName() : "unknown");
       switch (entity->domain.getDomain()) {
         case EntityDomain::Domain::BINARY_SENSOR:
           doc[key] = valueItem.value == 0 ? "OFF" : "ON";
@@ -109,8 +110,15 @@ bool MqttHandler::subscribeToCommands(uint8_t deviceId, uint8_t entityId) {
  */
 bool MqttHandler::publishDiscovery(const EntityInfo& entity,
                                    const char* nodePrefix) {
-  char topic[256];
+  Serial.print(F("Publishing discovery for entity: "));
+  Serial.print(entity.entityId);
+  Serial.print(':');
+  Serial.println(entity.name);
+
+  char topic[128];
+#if 1
   char payload[512];
+#endif
 
   const char* componentType = entity.domain.getName();
 
@@ -124,7 +132,7 @@ bool MqttHandler::publishDiscovery(const EntityInfo& entity,
 
   // Create discovery payload
   JsonDocument doc;
-  doc["name"] = entity.getName();
+  doc["name"] = entity.name;
   doc["unique_id"] = String("lora_") + entity.deviceId + "_" + entity_id_name;
   doc["object_id"] = String("lora_") + entity.deviceId + "_" + entity_id_name;
   doc["device_class"] =
@@ -142,11 +150,28 @@ bool MqttHandler::publishDiscovery(const EntityInfo& entity,
     snprintf(cmdTopic, sizeof(cmdTopic), "%s/device_%u/entity_%u/command",
              nodePrefix, entity.deviceId, entity.entityId);
     doc["command_topic"] = cmdTopic;
+    doc["payload_open"] = "OPEN";
+    doc["payload_close"] = "CLOSE";
+    doc["payload_stop"] = "STOP";
+    doc["state_open"] = "open";
+    doc["state_closed"] = "closed";
+  }
+
+  // Payload mappings for binary sensors
+  if (entity.domain.getDomain() == EntityDomain::Domain::BINARY_SENSOR) {
+    doc["payload_on"] = "ON";
+    doc["payload_off"] = "OFF";
   }
 
   // Value template
-  doc["value_template"] = "{{ value_json['" + String(entity.entityId) + "_" +
-                          entity.deviceClass->getName() + "'] }}";
+  char valueTemplate[128];
+  snprintf(valueTemplate, sizeof(valueTemplate), "{{ value_json['%u_%s'] }}",
+           entity.entityId,
+           entity.deviceClass ? entity.deviceClass->getName() : "unknown");
+  Serial.print(F("Value template: "));
+  Serial.println(valueTemplate);
+#if 1
+  doc["value_template"] = valueTemplate;
 
   // Device info
   JsonObject deviceObj = doc["device"].to<JsonObject>();
@@ -159,88 +184,25 @@ bool MqttHandler::publishDiscovery(const EntityInfo& entity,
     doc["unit_of_measurement"] = unit_name;
   }
 
-  serializeJson(doc, payload, sizeof(payload));
+  // State class for sensors
+  if (entity.domain.getDomain() == EntityDomain::Domain::SENSOR) {
+    doc["state_class"] = "measurement";
+  }
 
+  serializeJson(doc, payload, sizeof(payload));
+#endif
   Serial.print("Publishing discovery for entity: ");
-  Serial.println(entity.getName());
+  Serial.println(entity.name);
   Serial.print("    topic: ");
   Serial.println(topic);
+#if 1
   Serial.print("    Payload: ");
   Serial.println(payload);
+#endif
+  const bool result =
+      client.publish(topic, payload, true);  // Retain discovery message
 
-  return client.publish(topic, payload, true);  // Retain discovery message
-}
-
-bool MqttHandler::publishConfigDiscovery(const EntityInfo& entity,
-                                         const ConfigItem& config,
-                                         const char* nodePrefix) {
-  char topic[256];
-  char payload[512];
-
-  const char* componentType = entity.domain.getName();
-
-  String entity_id_name =
-      String(entity.entityId) + "_" +
-      (entity.deviceClass ? entity.deviceClass->getName() : "unknown");
-
-  String config_id_name = String(config.configId) + "_config";
-
-  // Build discovery topic for Home Assistant
-  snprintf(topic, sizeof(topic), "homeassistant/%s/lora_%u/%s_%s/config",
-           componentType, entity.deviceId, entity_id_name.c_str(),
-           config_id_name.c_str());
-
-  // Create discovery payload
-  JsonDocument doc;
-  doc["name"] = entity.getName() + String(" - Config ") + config.configId;
-  doc["unique_id"] = String("lora_") + entity.deviceId + "_" +
-                     entity_id_name + "_" + config_id_name;
-  doc["object_id"] = String("lora_") + entity.deviceId + "_" +
-                     entity_id_name + "_" + config_id_name;
-
-  // State topic
-  char stateTopic[128];
-  snprintf(stateTopic, sizeof(stateTopic), "%s/device_%u/state", nodePrefix,
-           entity.deviceId);
-  doc["state_topic"] = stateTopic;
-
-  // Command topic for writable configs
-  if (entity.domain.getDomain() == EntityDomain::Domain::COVER) {
-    char cmdTopic[128];
-    snprintf(cmdTopic, sizeof(cmdTopic), "%s/device_%u/entity_%u/command",
-             nodePrefix, entity.deviceId, entity.entityId);
-    doc["command_topic"] = cmdTopic;
-  }
-
-  // Value template
-  doc["value_template"] = "{{ value_json['" + String(entity.entityId) + "_" +
-                          entity.deviceClass->getName() + "'] }}";
-
-  // Device info
-  JsonObject deviceObj = doc["device"].to<JsonObject>();
-  deviceObj["identifiers"][0] = String("lora_device_") + entity.deviceId;
-  deviceObj["name"] = String("LoRa Device ") + entity.deviceId;
-
-  // Min and max values
-  Format fmt;
-  fmt.fromByte(config.format);
-  doc["min"] = fmt.scaleValue(config.minValue);
-  doc["max"] = fmt.scaleValue(config.maxValue);
-
-  // Unit of measurement
-  const char* unit_name = config.unit.getName();
-  if (strlen(unit_name) > 0) {
-    doc["unit_of_measurement"] = unit_name;
-  }
-
-  serializeJson(doc, payload, sizeof(payload));
-
-  Serial.print("Publishing config discovery for entity: ");
-  Serial.print(entity.getName());
-  Serial.print(", config: ");
-  Serial.println(config.configId);
-
-  return client.publish(topic, payload, true);  // Retain discovery message
+  return result;
 }
 
 void MqttHandler::setOnMessageReceived(void (*callback)(const char*,

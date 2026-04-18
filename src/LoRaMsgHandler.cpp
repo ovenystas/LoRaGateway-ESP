@@ -37,114 +37,46 @@ void LoRaMsgHandler::handleMessage(const LoRaRxMessage& msg) {
   Serial.print(", RSSI: ");
   Serial.println(msg.rssi);
   Serial.print("    Raw payload: ");
-  for (uint8_t i = 0; i < msg.payloadLength; i++) {
-    Serial.print(msg.payload[i], HEX);
-    Serial.print(" ");
-  }
+  printArray(Serial, msg.payload, msg.payloadLength, HEX);
   Serial.println();
 
   // Handle different message types
   switch (msg.header.flags.msgType) {
-    case LoRaMsgType::discovery_msg: {
-      Serial.print("Discovery message from Device ");
-      Serial.println(msg.header.src);
-
-      // Parse discovery payload
-      if (msg.payloadLength >= DiscoveryItem::size()) {
-        DiscoveryItem discovery;
-        discovery.fromByteArray(msg.payload, msg.payloadLength);
-
-        Serial.print("    Entity ID: ");
-        Serial.print(discovery.entityId);
-        Serial.print(", Type: ");
-        Serial.print(discovery.domain.getName());
-        Serial.print(", Device Class: ");
-        Serial.print(discovery.deviceClass ? discovery.deviceClass->getName()
-                                           : "unknown");
-        Serial.print(", Unit: ");
-        Serial.print(discovery.unit.getName());
-        Serial.print(", Format: (");
-        Serial.print(discovery.format.isSigned ? "signed" : "unsigned");
-        Serial.print(", ");
-        Serial.print(1 << discovery.format.size);
-        Serial.print(" bytes, ");
-        Serial.print(discovery.format.precision);
-        Serial.print(" decimals)");
-        Serial.print(", Config Items: ");
-        Serial.println(discovery.configItems.size());
-
-        uint8_t deviceId = msg.header.src;
-        onDiscoveryMessage(deviceId, discovery);
-      }
-      break;
-    }
-
-    case LoRaMsgType::value_msg: {
-      Serial.print("Value message from Device ");
-      Serial.println(msg.header.src);
-
-      uint8_t deviceId = msg.header.src;
-      //   deviceRegistry.updateDeviceLastSeen(deviceId);
-
-      // Parse value payload
-      if (msg.payloadLength > 0) {
-        uint8_t numValues = msg.payload[0];
-        Serial.print("    Number of values: ");
-        Serial.println(numValues);
-        if (msg.payloadLength != 1 + numValues * ValueItem::size()) {
-          Serial.println(
-              "    Payload size not correct for number of values, ignoring");
-          break;
-        }
-
-        std::vector<ValueItem> valueItems;
-        for (uint8_t i = 0; i < numValues; i++) {
-          const uint8_t* valuePtr = &msg.payload[1 + i * ValueItem::size()];
-          ValueItem valueItem;
-          valueItem.fromByteArray(valuePtr);
-
-          Serial.print("    #");
-          Serial.print(i);
-          Serial.print(": Entity ID=");
-          Serial.print(valueItem.entityId);
-          Serial.print(", Value=");
-          Serial.println(valueItem.value);
-
-          valueItems.push_back(valueItem);
-        }
-        onValueMessage(deviceId, valueItems);
-      }
-      break;
-    }
-
     case LoRaMsgType::ping_req: {
-      // Send ping response
-      LoRaTxMessage response;
-      LoRaHandler::setDefaultHeader(response.header, msg.header.src,
-                                    msg.header.dst, msg.header.id,
-                                    LoRaMsgType::ping_msg);
-      response.payloadLength = 2;
-      response.payload[0] = ((-msg.rssi) >> 8) & 0xFF;
-      response.payload[1] = (-msg.rssi) & 0xFF;
-      loRa.sendMessage(response);
+      handlePingRequest(msg);
       break;
     }
 
     case LoRaMsgType::ping_msg: {
-      // Ping response received
-      Serial.print("Ping response from Device ");
-      Serial.print(msg.header.src);
-      Serial.print(" - RSSI: ");
-      Serial.print(msg.rssi);
-      Serial.println(" dBm");
+      handlePingMessage(msg);
+      break;
+    }
 
-      // Extract device's RSSI if present in payload
-      if (msg.payloadLength >= 2) {
-        int16_t deviceRssi = ((int16_t)msg.payload[0] << 8) | msg.payload[1];
-        Serial.print("    Device's signal strength: ");
-        Serial.print(deviceRssi);
-        Serial.println(" dBm");
-      }
+    case LoRaMsgType::discovery_req: {
+      // handleDiscoveryRequest(msg);
+      Serial.println(F("Discovery request handling not implemented yet"));
+      break;
+    }
+
+    case LoRaMsgType::discovery_msg: {
+      handleDiscoveryMessage(msg);
+      break;
+    }
+
+    case LoRaMsgType::value_req: {
+      // handleValueRequest(msg);
+      Serial.println(F("Value request handling not implemented yet"));
+      break;
+    }
+
+    case LoRaMsgType::value_msg: {
+      handleValueMessage(msg);
+      break;
+    }
+
+    case LoRaMsgType::valueSet_req: {
+      // handleValueSetRequest(msg);
+      Serial.println(F("Value set request handling not implemented yet"));
       break;
     }
 
@@ -152,6 +84,109 @@ void LoRaMsgHandler::handleMessage(const LoRaRxMessage& msg) {
       Serial.print("Unknown message type: ");
       Serial.println(static_cast<uint8_t>(msg.header.flags.msgType));
       break;
+  }
+}
+
+void LoRaMsgHandler::handlePingMessage(const LoRaRxMessage& msg) {
+  // Ping response received
+  Serial.print("Ping response from Device ");
+  Serial.print(msg.header.src);
+  Serial.print(" - RSSI: ");
+  Serial.print(msg.rssi);
+  Serial.println(" dBm");
+
+  // Extract device's RSSI if present in payload
+  if (msg.payloadLength >= 2) {
+    int16_t deviceRssi = ((int16_t)msg.payload[0] << 8) | msg.payload[1];
+    Serial.print("    Device's signal strength: ");
+    Serial.print(deviceRssi);
+    Serial.println(" dBm");
+  }
+}
+
+void LoRaMsgHandler::handlePingRequest(const LoRaRxMessage& msg) {
+  // Send ping response
+  LoRaTxMessage response;
+  LoRaHandler::setDefaultHeader(response.header, msg.header.src, msg.header.dst,
+                                msg.header.id, LoRaMsgType::ping_msg);
+  response.payloadLength = 2;
+  response.payload[0] = ((-msg.rssi) >> 8) & 0xFF;
+  response.payload[1] = (-msg.rssi) & 0xFF;
+  loRa.sendMessage(response);
+}
+
+void LoRaMsgHandler::handleValueMessage(const LoRaRxMessage& msg) {
+  Serial.print("Value message from Device ");
+  Serial.println(msg.header.src);
+
+  uint8_t deviceId = msg.header.src;
+  //   deviceRegistry.updateDeviceLastSeen(deviceId);
+
+  // Parse value payload
+  if (msg.payloadLength > 0) {
+    uint8_t numValues = msg.payload[0];
+    Serial.print("    Number of values: ");
+    Serial.println(numValues);
+    if (msg.payloadLength != 1 + numValues * ValueItem::size()) {
+      Serial.println(
+          "    Payload size not correct for number of values, ignoring");
+      {
+        return;
+      };
+    }
+
+    std::vector<ValueItem> valueItems;
+    for (uint8_t i = 0; i < numValues; i++) {
+      const uint8_t* valuePtr = &msg.payload[1 + i * ValueItem::size()];
+      ValueItem valueItem;
+      valueItem.fromByteArray(valuePtr);
+
+      Serial.print("    #");
+      Serial.print(i);
+      Serial.print(": Entity ID=");
+      Serial.print(valueItem.entityId);
+      Serial.print(", Value=");
+      Serial.println(valueItem.value);
+
+      valueItems.push_back(valueItem);
+    }
+    onValueMessage(deviceId, valueItems);
+  }
+}
+
+void LoRaMsgHandler::handleDiscoveryMessage(const LoRaRxMessage& msg) {
+  Serial.print("Discovery message from Device ");
+  Serial.println(msg.header.src);
+
+  // Parse discovery payload
+  if (msg.payloadLength >= DiscoveryItem::size()) {
+    DiscoveryItem discovery;
+    discovery.fromByteArray(msg.payload, msg.payloadLength);
+
+    Serial.print("    Entity ID: ");
+    Serial.print(discovery.entityId);
+    Serial.print(", Name: ");
+    Serial.print(discovery.name);
+    Serial.print(", Type: ");
+    Serial.print(discovery.domain.getName());
+    Serial.print(", Device Class: ");
+    Serial.print(discovery.deviceClass ? discovery.deviceClass->getName()
+                                       : "unknown");
+    Serial.print(", Category: ");
+    Serial.print(discovery.category.getName());
+    Serial.print(", Unit: ");
+    Serial.print(discovery.unit.getName());
+    Serial.print(", Format: (");
+    discovery.format.print(Serial);
+    Serial.print("), Min=");
+    Serial.print(discovery.format.scaleValue(discovery.minValue),
+                 discovery.format.getPrecision());
+    Serial.print(", Max=");
+    Serial.println(discovery.format.scaleValue(discovery.maxValue),
+                   discovery.format.getPrecision());
+
+    const uint8_t deviceId = msg.header.src;
+    onDiscoveryMessage(deviceId, discovery);
   }
 }
 

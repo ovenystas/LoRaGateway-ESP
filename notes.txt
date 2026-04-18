@@ -88,3 +88,44 @@ LoRa message received from Device 1, Type: 1, ID: 167, Dst: 0, PayloadLen: 2, RS
     Raw payload: FF F4
 Ping response from Device 1 - RSSI: -11 dBm
     Device's signal strength: -12 dBm
+
+---------------------------------------------------------------------------------------------
+
+LoRaTx:
+ H:
+  00 dst
+  01 src
+  01 id
+  43 flags ack_req?, discovery_msg
+ P:
+  00 eid
+  02 domain=cover
+  06 devClass=garage
+  00 unit=none
+  00 format=unsigned, 1-byte, 0-decimals
+  01 numConfigItems
+  00 cfgId
+  0B unit="s"
+  04 format=unsigned, 2-bytes, 0-decimals
+  00 min=0
+  00
+  00
+  00
+  00 max=0x0000A8C0=43200
+  00
+  A8
+  C0
+  10 name=skräp (should be "Report Interval")
+  01
+  41
+  56
+  52
+  20
+  49
+  53
+  1F
+  1A
+  CC
+  28
+  4D
+  00
