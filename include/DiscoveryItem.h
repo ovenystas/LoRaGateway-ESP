@@ -91,6 +91,8 @@ class DiscoveryItem {
         return std::unique_ptr<DeviceClass>(new CoverDeviceClass(classValue));
       case EntityDomain::Domain::SENSOR:
         return std::unique_ptr<DeviceClass>(new SensorDeviceClass(classValue));
+      case EntityDomain::Domain::NUMBER:
+        return std::unique_ptr<DeviceClass>(new NumberDeviceClass(classValue));
       default:
         return std::unique_ptr<DeviceClass>(nullptr);
     }

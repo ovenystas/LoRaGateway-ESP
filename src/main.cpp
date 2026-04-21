@@ -21,8 +21,8 @@ WiFiClient wifiClient;
 LoRaHandler loRa(LORA_CS_PIN, LORA_RST_PIN, LORA_DIO_PIN);
 LoRaMsgHandler loRaMsg(loRa, LORA_MY_ADDRESS);
 MqttHandler mqtt(wifiClient);
-MqttMsgHandler mqttMsg(loRaMsg);
 DeviceRegistry deviceRegistry;
+MqttMsgHandler mqttMsg(loRaMsg, deviceRegistry);
 
 // Timing variables
 unsigned long lastMqttCheckTime = 0;
@@ -206,10 +206,12 @@ static void setupMqtt() {
         for (uint8_t j = 0; j < devices[i]->entityCount; j++) {
           // Only subscribe to command topics for entities that can receive
           // commands
-          if (devices[i]->entities[j].domain.getDomain() ==
-              EntityDomain::Domain::COVER) {
+          const EntityDomain::Domain domain =
+              devices[i]->entities[j].domain.getDomain();
+          if (domain == EntityDomain::Domain::COVER ||
+              domain == EntityDomain::Domain::NUMBER) {
             mqtt.subscribeToCommands(devices[i]->deviceId,
-                                     devices[i]->entities[j].entityId);
+                                     devices[i]->entities[j].entityId, domain);
           }
         }
       }
@@ -255,12 +257,15 @@ static void onDiscoveryMessage(uint8_t deviceId,
     entity.print(Serial, 2);
 
     // Subscribe to command topic for entities that can receive commands (e.g.,
-    // covers)
-    if (mqtt.isConnected() &&
-        entity.domain.getDomain() == EntityDomain::Domain::COVER) {
-      mqtt.subscribeToCommands(deviceId, discovery.entityId);
-      Serial.print(F("Subscribed to command topic for Entity "));
-      Serial.println(discovery.entityId);
+    // covers and numbers)
+    if (mqtt.isConnected()) {
+      const EntityDomain::Domain domain = entity.domain.getDomain();
+      if (domain == EntityDomain::Domain::COVER ||
+          domain == EntityDomain::Domain::NUMBER) {
+        mqtt.subscribeToCommands(deviceId, discovery.entityId, domain);
+        Serial.print(F("Subscribed to command topic for Entity "));
+        Serial.println(discovery.entityId);
+      }
     }
 
     // Publish Home Assistant discovery for this entity
@@ -285,7 +290,7 @@ static void onValueMessage(uint8_t deviceId,
       Serial.print(F("    Value for entity "));
       Serial.print(entity->name);
       Serial.print(": ");
-      float scaledValue = entity->format.scaleValue(valueItem.value);
+      float scaledValue = entity->format.fromRawValue(valueItem.value);
       Serial.print(scaledValue, entity->format.getPrecision());
       Serial.print(' ');
       Serial.println(entity->unit.getName());
@@ -303,8 +308,7 @@ static void onValueMessage(uint8_t deviceId,
 static void sendMqttCommandToDevice(uint8_t deviceId, uint8_t entityId,
                                     int32_t value) {
   LoRaTxMessage cmdMsg;
-  LoRaHandler::setDefaultHeader(cmdMsg.header, deviceId, 0, 0,
-                                LoRaMsgType::valueSet_req);
+  cmdMsg.header = LoRaHeader(deviceId, 0, 0, LoRaMsgType::valueSet_req);
 
   // Create a simple command payload with the value
   cmdMsg.payloadLength = 0;

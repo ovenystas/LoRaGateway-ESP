@@ -96,5 +96,5 @@ class NumberDeviceClass : public DeviceClass {
   DeviceClass* clone() const override { return new NumberDeviceClass(*this); }
 
  private:
-  Type deviceClass;
+  const Type deviceClass;
 };

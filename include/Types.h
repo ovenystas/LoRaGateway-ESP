@@ -67,6 +67,16 @@ struct LoRaHeader {
   uint8_t id;
   LoRaHeaderFlags flags;
 
+  // Default constructor
+  LoRaHeader() : dst(0), src(0), id(0), flags() {}
+
+  // Constructor with parameters
+  LoRaHeader(uint8_t dst, uint8_t src, uint8_t id,
+             LoRaMsgType msgType = LoRaMsgType::ping_req)
+      : dst(dst), src(src), id(id), flags() {
+    flags.msgType = msgType;
+  }
+
   uint8_t toByteArray(uint8_t* buf) const {
     buf[0] = dst;
     buf[1] = src;
@@ -140,6 +150,7 @@ struct LoRaRxMessage {
   LoRaHeader header;
   uint8_t payloadLength;
   int16_t rssi;
+  int8_t snr;  // Signal-to-Noise Ratio
   uint8_t payload[LORA_MAX_PAYLOAD_LENGTH];
 };
 

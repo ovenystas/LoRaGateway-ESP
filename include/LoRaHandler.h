@@ -14,9 +14,6 @@ class LoRaHandler {
   // Send a message
   bool sendMessage(const LoRaTxMessage& msg);
 
-  // Check if a message is available and read it
-  bool readMessage(LoRaRxMessage& msg);
-
   // Set callback for received messages
   void setOnMessageReceived(void (*callback)(const LoRaRxMessage&));
 
@@ -31,20 +28,20 @@ class LoRaHandler {
   static bool decodeMessage(const uint8_t* buffer, uint8_t len,
                             LoRaRxMessage& msg);
 
-  // Helper to set default header
-  static void setDefaultHeader(LoRaHeader& header, uint8_t dst, uint8_t src,
-                               uint8_t id = 0,
-                               LoRaMsgType msgType = LoRaMsgType::ping_req);
-
   static void printMessage(const LoRaTxMessage& msg);
   static void printMessage(const LoRaRxMessage& msg);
 
  private:
-  int csPin;
-  int rstPin;
-  int dioPin;
+  const int csPin;
+  const int rstPin;
+  const int dioPin;
   void (*onMessageReceived)(const LoRaRxMessage&);
 
-  // Utility for CRC calculation
-  uint16_t calculateCRC(const uint8_t* data, uint8_t len);
+  // Helper to read and decode packet from LoRa module
+  bool readPacket(LoRaRxMessage& msg);
+
+  // Helper to print message payload (shared by both Tx and Rx formatters)
+  static void printMessagePayload(const LoRaHeader& header,
+                                  const uint8_t* payload, uint8_t payloadLength,
+                                  bool ackResponse);
 };

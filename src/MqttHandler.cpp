@@ -71,7 +71,7 @@ bool MqttHandler::publishSensorValues(
           doc[key] = valueItem.value == 0 ? "OFF" : "ON";
           break;
         case EntityDomain::Domain::SENSOR:
-          doc[key] = entity->format.scaleValue(valueItem.value);
+          doc[key] = entity->format.fromRawValue(valueItem.value);
           break;
         case EntityDomain::Domain::COVER:
           switch (valueItem.value) {
@@ -102,11 +102,19 @@ bool MqttHandler::publishSensorValues(
   return client.publish(topic, payload);
 }
 
-bool MqttHandler::subscribeToCommands(uint8_t deviceId, uint8_t entityId) {
+bool MqttHandler::subscribeToCommands(uint8_t deviceId, uint8_t entityId,
+                                      EntityDomain::Domain domain) {
   char topic[128];
 
-  snprintf(topic, sizeof(topic), "lora-gw/device_%u/entity_%u/command",
-           deviceId, entityId);
+  const char* topicSuffix = "command";
+  if (domain == EntityDomain::Domain::COVER) {
+    topicSuffix = "service";
+  } else if (domain == EntityDomain::Domain::NUMBER) {
+    topicSuffix = "value";
+  }
+
+  snprintf(topic, sizeof(topic), "lora-gw/device_%u/entity_%u/%s", deviceId,
+           entityId, topicSuffix);
 
   return client.subscribe(topic);
 }
@@ -156,10 +164,10 @@ bool MqttHandler::publishDiscovery(const EntityInfo& entity,
            entity.deviceId);
   doc["state_topic"] = stateTopic;
 
-  // Command topic (for covers)
+  // Command topic (for covers and config entities)
   if (entity.domain.getDomain() == EntityDomain::Domain::COVER) {
     char cmdTopic[128];
-    snprintf(cmdTopic, sizeof(cmdTopic), "%s/device_%u/entity_%u/command",
+    snprintf(cmdTopic, sizeof(cmdTopic), "%s/device_%u/entity_%u/service",
              nodePrefix, entity.deviceId, entity.entityId);
     doc["command_topic"] = cmdTopic;
     doc["payload_open"] = "OPEN";
@@ -167,6 +175,12 @@ bool MqttHandler::publishDiscovery(const EntityInfo& entity,
     doc["payload_stop"] = "STOP";
     doc["state_open"] = "open";
     doc["state_closed"] = "closed";
+  } else if (entity.domain.getDomain() == EntityDomain::Domain::NUMBER &&
+             entity.category.getType() == EntityCategory::Category::CONFIG) {
+    char cmdTopic[128];
+    snprintf(cmdTopic, sizeof(cmdTopic), "%s/device_%u/entity_%u/value",
+             nodePrefix, entity.deviceId, entity.entityId);
+    doc["command_topic"] = cmdTopic;
   }
 
   // Payload mappings for binary sensors
@@ -195,9 +209,20 @@ bool MqttHandler::publishDiscovery(const EntityInfo& entity,
     doc["unit_of_measurement"] = unit_name;
   }
 
+  // Entity category (for config entities)
+  if (entity.category.getType() == EntityCategory::Category::CONFIG) {
+    doc["entity_category"] = "config";
+  }
+
   // State class for sensors
   if (entity.domain.getDomain() == EntityDomain::Domain::SENSOR) {
     doc["state_class"] = "measurement";
+  }
+
+  // Min/max values for NUMBER entities
+  if (entity.domain.getDomain() == EntityDomain::Domain::NUMBER) {
+    doc["min"] = entity.format.fromRawValue(entity.minValue);
+    doc["max"] = entity.format.fromRawValue(entity.maxValue);
   }
 
   serializeJson(doc, payload, sizeof(payload));

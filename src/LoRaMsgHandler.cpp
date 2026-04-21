@@ -107,8 +107,8 @@ void LoRaMsgHandler::handlePingMessage(const LoRaRxMessage& msg) {
 void LoRaMsgHandler::handlePingRequest(const LoRaRxMessage& msg) {
   // Send ping response
   LoRaTxMessage response;
-  LoRaHandler::setDefaultHeader(response.header, msg.header.src, msg.header.dst,
-                                msg.header.id, LoRaMsgType::ping_msg);
+  response.header = LoRaHeader(msg.header.src, msg.header.dst, msg.header.id,
+                               LoRaMsgType::ping_msg);
   response.payloadLength = 2;
   response.payload[0] = ((-msg.rssi) >> 8) & 0xFF;
   response.payload[1] = (-msg.rssi) & 0xFF;
@@ -179,10 +179,10 @@ void LoRaMsgHandler::handleDiscoveryMessage(const LoRaRxMessage& msg) {
     Serial.print(", Format: (");
     discovery.format.print(Serial);
     Serial.print("), Min=");
-    Serial.print(discovery.format.scaleValue(discovery.minValue),
+    Serial.print(discovery.format.fromRawValue(discovery.minValue),
                  discovery.format.getPrecision());
     Serial.print(", Max=");
-    Serial.println(discovery.format.scaleValue(discovery.maxValue),
+    Serial.println(discovery.format.fromRawValue(discovery.maxValue),
                    discovery.format.getPrecision());
 
     const uint8_t deviceId = msg.header.src;
@@ -192,8 +192,7 @@ void LoRaMsgHandler::handleDiscoveryMessage(const LoRaRxMessage& msg) {
 
 bool LoRaMsgHandler::sendPingRequest(uint8_t targetDeviceId) {
   LoRaTxMessage msg;
-  loRa.setDefaultHeader(msg.header, targetDeviceId, myAddress, 0,
-                        LoRaMsgType::ping_req);
+  msg.header = LoRaHeader(targetDeviceId, myAddress, 0, LoRaMsgType::ping_req);
   msg.payloadLength = 0;
 
   return loRa.sendMessage(msg);
@@ -202,10 +201,32 @@ bool LoRaMsgHandler::sendPingRequest(uint8_t targetDeviceId) {
 bool LoRaMsgHandler::sendDiscoveryRequest(uint8_t targetDeviceId,
                                           uint8_t entityId) {
   LoRaTxMessage msg;
-  loRa.setDefaultHeader(msg.header, targetDeviceId, myAddress, 0,
-                        LoRaMsgType::discovery_req);
+  msg.header =
+      LoRaHeader(targetDeviceId, myAddress, 0, LoRaMsgType::discovery_req);
   msg.payloadLength = 1;
   msg.payload[0] = entityId;
+
+  return loRa.sendMessage(msg);
+}
+
+bool LoRaMsgHandler::sendValueSet(uint8_t targetDeviceId, uint8_t entityId,
+                                  uint32_t value) {
+  LoRaTxMessage msg;
+  msg.header =
+      LoRaHeader(targetDeviceId, myAddress, 0, LoRaMsgType::valueSet_req);
+  msg.payloadLength = 5;
+  msg.payload[0] = entityId;
+  msg.payload[1] = (value >> 24) & 0xFF;
+  msg.payload[2] = (value >> 16) & 0xFF;
+  msg.payload[3] = (value >> 8) & 0xFF;
+  msg.payload[4] = value & 0xFF;
+
+  Serial.print("Sending value set command to Device ");
+  Serial.print(targetDeviceId);
+  Serial.print(", Entity ");
+  Serial.print(entityId);
+  Serial.print(", Value ");
+  Serial.println(value);
 
   return loRa.sendMessage(msg);
 }
@@ -213,8 +234,8 @@ bool LoRaMsgHandler::sendDiscoveryRequest(uint8_t targetDeviceId,
 bool LoRaMsgHandler::sendServiceCommand(uint8_t targetDeviceId,
                                         uint8_t entityId, uint8_t command) {
   LoRaTxMessage msg;
-  loRa.setDefaultHeader(msg.header, targetDeviceId, myAddress, 0,
-                        LoRaMsgType::service_req);
+  msg.header =
+      LoRaHeader(targetDeviceId, myAddress, 0, LoRaMsgType::service_req);
   msg.payloadLength = 2;
   msg.payload[0] = entityId;
   msg.payload[1] = command;

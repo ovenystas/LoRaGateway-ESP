@@ -67,5 +67,5 @@ class SensorDeviceClass : public DeviceClass {
   DeviceClass* clone() const override { return new SensorDeviceClass(*this); }
 
  private:
-  Type deviceClass;
+  const Type deviceClass;
 };

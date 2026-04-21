@@ -32,7 +32,9 @@ class MqttHandler {
                            const std::vector<ValueItem>& valueItems);
 
   // Subscribe to command topics for an entity
-  bool subscribeToCommands(uint8_t deviceId, uint8_t entityId);
+  bool subscribeToCommands(
+      uint8_t deviceId, uint8_t entityId,
+      EntityDomain::Domain domain = EntityDomain::Domain::COVER);
 
   // Publish discovery message for Home Assistant
   bool publishDiscovery(const EntityInfo& entity, const char* nodePrefix);

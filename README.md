@@ -310,7 +310,7 @@ Restart Home Assistant. Devices appear under **Settings â†’ Devices & Services â
 1. Add type to `LoRaMsgType` enum in [include/Types.h](include/Types.h)
 2. Create new payload struct (e.g., `CustomItem`) with `toByteArray()` and `fromByteArray()` methods
 3. Add parsing logic in [src/main.cpp](src/main.cpp) `handleLoRaMessage()`
-4. Update `setDefaultHeader()` calls to use new message type
+4. Update `LoRaHeader` constructor calls to use new message type in [src/LoRaMsgHandler.cpp](src/LoRaMsgHandler.cpp)
 
 ### Custom LoRa Message Payloads
 

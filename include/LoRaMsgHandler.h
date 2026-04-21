@@ -41,6 +41,9 @@ class LoRaMsgHandler {
   // entities
   bool sendDiscoveryRequest(uint8_t targetDeviceId, uint8_t entityId = 255);
 
+  // Send a value set command to a specific device entity
+  bool sendValueSet(uint8_t targetDeviceId, uint8_t entityId, uint32_t value);
+
   // Send a service command to a specific device entity
   bool sendServiceCommand(uint8_t targetDeviceId, uint8_t entityId,
                           uint8_t command);

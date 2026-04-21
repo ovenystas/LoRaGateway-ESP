@@ -31,5 +31,5 @@ class CoverDeviceClass : public DeviceClass {
   DeviceClass* clone() const override { return new CoverDeviceClass(*this); }
 
  private:
-  Type deviceClass;
+  const Type deviceClass;
 };

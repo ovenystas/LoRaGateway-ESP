@@ -48,5 +48,5 @@ class BinarySensorDeviceClass : public DeviceClass {
   }
 
  private:
-  Type deviceClass;
+  const Type deviceClass;
 };

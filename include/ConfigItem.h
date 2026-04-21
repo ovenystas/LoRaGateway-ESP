@@ -47,9 +47,9 @@ struct ConfigItem {
     n += printer.print(", Format=(");
     n += format.print(printer);
     n += printer.print("), Min=");
-    n += printer.print(format.scaleValue(minValue), format.getPrecision());
+    n += printer.print(format.fromRawValue(minValue), format.getPrecision());
     n += printer.print(", Max=");
-    n += printer.println(format.scaleValue(maxValue), format.getPrecision());
+    n += printer.println(format.fromRawValue(maxValue), format.getPrecision());
     return n;
   }
 };
