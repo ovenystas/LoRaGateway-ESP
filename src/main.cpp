@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <SPIFFS.h>
 #include <WiFi.h>
 
 #include "Config.h"
@@ -9,6 +10,7 @@
 #include "MqttMsgHandler.h"
 #include "Types.h"
 #include "Util.h"
+#include "WebServerHandler.h"
 
 #define VERSION_MAJOR 0
 #define VERSION_MINOR 0
@@ -23,6 +25,7 @@ LoRaMsgHandler loRaMsg(loRa, LORA_MY_ADDRESS);
 MqttHandler mqtt(wifiClient);
 DeviceRegistry deviceRegistry;
 MqttMsgHandler mqttMsg(loRaMsg, deviceRegistry);
+WebServerHandler webServer(loRaMsg, deviceRegistry);
 
 // Timing variables
 unsigned long lastMqttCheckTime = 0;
@@ -38,6 +41,7 @@ const unsigned long PING_INTERVAL =
 
 // Forward declarations
 static void printWelcomeMessage(void);
+static void setupSpiffs();
 static void setupLoRa(void);
 static void setupWiFi(void);
 static void setupMqtt(void);
@@ -59,6 +63,10 @@ void setup() {
   }
 
   printWelcomeMessage();
+  delay(5000);
+
+  // Setup SPIFFS File system for web server files
+  setupSpiffs();
 
   // LoRa setup and set message callback
   loRaMsg.setOnDiscoveryMessage(onDiscoveryMessage);
@@ -85,6 +93,13 @@ void loop() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println(F("WiFi disconnected, attempting to reconnect..."));
     setupWiFi();
+  } else {
+    // Start WebServer if not already started and WiFi is connected
+    static bool webServerStarted = false;
+    if (!webServerStarted) {
+      webServer.begin();
+      webServerStarted = true;
+    }
   }
 
   // Handle MQTT reconnection
@@ -133,6 +148,9 @@ void loop() {
   // Process MQTT events
   mqtt.handle();
 
+  // Process WebServer events
+  webServer.handle();
+
   delay(10);  // Small delay to prevent watchdog timeout
 }
 
@@ -149,6 +167,17 @@ static void printWelcomeMessage(void) {
   printVersion(VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
   Serial.print(F(", Address="));
   Serial.println(LORA_MY_ADDRESS);
+}
+
+static void setupSpiffs() {
+  Serial.print(F("Initializing SPIFFS."));
+  if (!SPIFFS.begin(true)) {
+    Serial.println(F(" Failed!"));
+    while (1) {
+      delay(1000);
+    }
+  }
+  Serial.println(F(" OK."));
 }
 
 static void setupLoRa() {

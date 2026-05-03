@@ -180,7 +180,7 @@ bool MqttMsgHandler::handleNumberCommand(const char* payloadStr,
   }
 
   // Forward value to device via LoRa
-  if (loRaMsgHandler->sendValueSet(deviceId, entityId, rawValue)) {
+  if (loRaMsgHandler->sendValueSetRequest(deviceId, entityId, rawValue)) {
     Serial.print("Value set command sent successfully (device=");
     Serial.print(deviceId);
     Serial.print(", entity=");

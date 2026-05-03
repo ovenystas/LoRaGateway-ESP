@@ -209,8 +209,23 @@ bool LoRaMsgHandler::sendDiscoveryRequest(uint8_t targetDeviceId,
   return loRa.sendMessage(msg);
 }
 
-bool LoRaMsgHandler::sendValueSet(uint8_t targetDeviceId, uint8_t entityId,
-                                  uint32_t value) {
+bool LoRaMsgHandler::sendValueGetRequest(uint8_t targetDeviceId,
+                                         uint8_t entityId) {
+  LoRaTxMessage msg;
+  msg.header = LoRaHeader(targetDeviceId, myAddress, 0, LoRaMsgType::value_req);
+  msg.payloadLength = 1;
+  msg.payload[0] = entityId;
+
+  return loRa.sendMessage(msg);
+}
+
+bool LoRaMsgHandler::sendValueSetRequest(uint8_t targetDeviceId,
+                                         uint8_t entityId, uint32_t value) {
+  if (entityId == 255) {
+    Serial.println("Entity ID cannot be 255 for value set request");
+    return false;
+  }
+
   LoRaTxMessage msg;
   msg.header =
       LoRaHeader(targetDeviceId, myAddress, 0, LoRaMsgType::valueSet_req);
