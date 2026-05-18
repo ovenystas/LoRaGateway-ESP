@@ -5,7 +5,6 @@
 #include <vector>
 
 #include "BinarySensorDeviceClass.h"
-#include "ConfigItem.h"
 #include "CoverDeviceClass.h"
 #include "Format.h"
 #include "NumberDeviceClass.h"

@@ -102,7 +102,7 @@ Edit `include/secrets.h` to change LoRa pins (if using different GPIO):
    - `LoRaMsgType`: 10 message types (ping, discovery, value, config, service)
    - Entity types: BinarySensor, Sensor, Switch, Cover
    - Device classes for each entity type
-   - Payload structures: ValueItem, DiscoveryItem, ConfigItem, ServiceItem
+   - Payload structures: ValueItem, DiscoveryItem, ServiceItem
 
 2. **LoRaHandler** - LoRa radio communication
    - Header-based protocol with ACK request/response capability
@@ -227,15 +227,6 @@ Byte 1: Entity Type (0=BinarySensor, 1=Sensor, 2=Switch, 3=Cover)
 Byte 2: Device Class (type-specific)
 Byte 3: Unit (measurement unit)
 Byte 4: Format (size, signedness, precision)
-```
-
-**ConfigItem** (11 bytes) - Configuration metadata
-```
-Byte 0: Config ID
-Byte 1: Unit
-Byte 2: Format
-Bytes 3-6: Min Value (int32, big-endian)
-Bytes 7-10: Max Value (int32, big-endian)
 ```
 
 **ServiceItem** (2 bytes) - Service request

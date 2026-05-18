@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "BinarySensorDeviceClass.h"
-#include "ConfigItem.h"
 #include "CoverDeviceClass.h"
 #include "DeviceClass.h"
 #include "Entity.h"
