@@ -14,3 +14,9 @@
 #define MQTT_CLIENT_ID "lora-gw"
 #define MQTT_USERNAME ""  // Leave empty if no auth required
 #define MQTT_PASSWORD ""  // Leave empty if no auth required
+
+// OTA (Over-The-Air) Update Configuration
+// Leave empty for no password (not recommended for production).
+#define OTA_PASSWORD ""
+
+

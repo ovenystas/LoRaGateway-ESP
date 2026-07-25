@@ -78,6 +78,7 @@ This gateway enables bidirectional communication between:
    ```
 
 5. **Verify startup:**
+
    ```
    LoRa Gateway starting up...
    WiFi connected! IP: 192.168.1.x
@@ -93,7 +94,55 @@ Edit `include/secrets.h` to change LoRa pins (if using different GPIO):
 #define LORA_DIO_PIN 2      // DIO0 interrupt
 ```
 
+## OTA (Over-The-Air) Updates
+
+Once the gateway has been flashed once via USB and is connected to WiFi, subsequent
+firmware updates can be uploaded wirelessly using [ArduinoOTA](https://docs.espressif.com/projects/arduino-esp32/en/latest/tutorials/ota.html),
+no USB cable required.
+
+### How it works
+
+- On boot, once WiFi is connected, the gateway starts an `ArduinoOTA` listener and
+  advertises itself via mDNS using the hostname configured by `OTA_HOSTNAME` in
+  [include/Config.h](include/Config.h) (defaults to `lora-gateway`, reachable as
+  `lora-gateway.local`).
+- A dedicated PlatformIO environment, `nodemcu-32s-ota`, is configured to upload over
+  the network instead of USB serial.
+
+### Usage
+
+1. Flash the device once via USB as usual (`pio run -e nodemcu-32s -t upload`) with a
+   firmware version that includes OTA support (already the case after this change).
+2. Make your code changes.
+3. Upload wirelessly:
+   ```bash
+   pio run -e nodemcu-32s-ota -t upload
+   ```
+   PlatformIO will build the firmware and push it to `lora-gateway.local` over WiFi.
+   Watch the serial monitor (if connected) or the PlatformIO console for progress.
+
+If mDNS resolution (`.local` hostnames) doesn't work reliably on your network, replace
+`upload_port` in the `[env:nodemcu-32s-ota]` section of `platformio.ini` with the
+device's IP address instead.
+
+### Securing OTA updates (optional but recommended)
+
+By default `OTA_PASSWORD` is empty (no authentication). To require a password:
+
+1. Set `OTA_PASSWORD` in `include/secrets.h`:
+   ```cpp
+   #define OTA_PASSWORD "your-strong-password"
+   ```
+2. Reflash the device once via USB so it picks up the password.
+3. Uncomment and set `upload_flags` in the `[env:nodemcu-32s-ota]` section of
+   `platformio.ini`:
+   ```ini
+   upload_flags =
+       --auth=your-strong-password
+   ```
+
 ## Architecture
+
 
 ### Core Components
 

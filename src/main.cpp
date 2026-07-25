@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <ArduinoOTA.h>
+#include <ESPmDNS.h>
 #include <SPIFFS.h>
 #include <WiFi.h>
 
@@ -13,7 +15,7 @@
 #include "WebServerHandler.h"
 
 #define VERSION_MAJOR 0
-#define VERSION_MINOR 0
+#define VERSION_MINOR 1
 #define VERSION_PATCH 0
 
 #define LORA_MY_ADDRESS 0
@@ -56,7 +58,9 @@ static void printWelcomeMessage(void);
 static void setupSpiffs();
 static void setupLoRa(void);
 static void handleWiFi(void);
+static void setupOta(void);
 static void setupMqtt(void);
+
 static void onDiscoveryMessage(uint8_t deviceId,
                                const DiscoveryItem& discovery);
 static void onValueMessage(uint8_t deviceId,
@@ -88,6 +92,11 @@ void setup() {
   // WiFi setup (kick off the non-blocking connection state machine)
   handleWiFi();
 
+  // OTA setup (only meaningful once WiFi is connected)
+  if (WiFi.status() == WL_CONNECTED) {
+    setupOta();
+  }
+
   // MQTT setup and set message callback
   mqtt.setOnMessageReceived(mqttMsg.handleMessage);
   if (WiFi.status() == WL_CONNECTED) {
@@ -104,12 +113,16 @@ void loop() {
   handleWiFi();
 
   if (WiFi.status() == WL_CONNECTED) {
-    // Start WebServer if not already started and WiFi is connected
+    // Start WebServer and OTA if not already started and WiFi is connected
     static bool webServerStarted = false;
     if (!webServerStarted) {
       webServer.begin();
+      setupOta();
       webServerStarted = true;
     }
+
+    // Process OTA update requests
+    ArduinoOTA.handle();
   }
 
   // Handle MQTT reconnection
@@ -227,10 +240,61 @@ static void setupLoRa() {
   Serial.println(F(" OK."));
 }
 
+// Sets up ArduinoOTA so firmware can be uploaded over WiFi using
+// `pio run -e nodemcu-32s-ota -t upload`. Safe to call multiple times;
+// initialization only happens once.
+static void setupOta() {
+  static bool otaStarted = false;
+  if (otaStarted) {
+    return;
+  }
+
+  ArduinoOTA.setHostname(OTA_HOSTNAME);
+
+  if (strlen(OTA_PASSWORD) > 0) {
+    ArduinoOTA.setPassword(OTA_PASSWORD);
+  }
+
+  ArduinoOTA
+      .onStart([]() {
+        String type =
+            (ArduinoOTA.getCommand() == U_FLASH) ? "sketch" : "filesystem";
+        Serial.print(F("OTA: Start updating "));
+        Serial.println(type);
+      })
+      .onEnd([]() { Serial.println(F("\nOTA: Update complete, rebooting.")); })
+      .onProgress([](unsigned int progress, unsigned int total) {
+        Serial.printf("OTA: Progress %u%%\r", (progress / (total / 100)));
+      })
+      .onError([](ota_error_t error) {
+        Serial.printf("OTA: Error[%u]: ", error);
+        if (error == OTA_AUTH_ERROR) {
+          Serial.println(F("Auth Failed"));
+        } else if (error == OTA_BEGIN_ERROR) {
+          Serial.println(F("Begin Failed"));
+        } else if (error == OTA_CONNECT_ERROR) {
+          Serial.println(F("Connect Failed"));
+        } else if (error == OTA_RECEIVE_ERROR) {
+          Serial.println(F("Receive Failed"));
+        } else if (error == OTA_END_ERROR) {
+          Serial.println(F("End Failed"));
+        }
+      });
+
+  ArduinoOTA.begin();
+
+  otaStarted = true;
+
+  Serial.print(F("OTA ready. Hostname: "));
+  Serial.print(OTA_HOSTNAME);
+  Serial.println(F(".local"));
+}
+
 // Non-blocking WiFi connect/reconnect handler. This is a simple state
 // machine driven by millis() so it never blocks the LoRa/MQTT/WebServer
 // processing in loop():
 //
+
 //   NEED_CONNECT -> kick off WiFi.begin(), move to CONNECTING
 //   CONNECTING   -> poll WiFi.status() every WIFI_POLL_INTERVAL ms;
 //                   on success move to CONNECTED, on too many failed

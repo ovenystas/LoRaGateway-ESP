@@ -15,3 +15,10 @@
 // Gateway Configuration
 #define GATEWAY_NAME "LoRa Gateway"
 #define NODE_TIMEOUT_SECONDS 300  // Timeout for node considered offline
+
+// OTA (Over-The-Air) Update Configuration
+// Hostname used for mDNS so the device can be reached as
+// http://<OTA_HOSTNAME>.local and used as the upload_port for
+// `pio run -e nodemcu-32s-ota -t upload`.
+#define OTA_HOSTNAME "lora-gateway"
+
