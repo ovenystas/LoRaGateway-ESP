@@ -1,0 +1,33 @@
+# .clineignore - Optimerad för PlatformIO & Arduino för att spara API-tokens
+
+# --- PlatformIO specifika bygg- och temporära filer ---
+.pio/
+.pioenvs/
+.piolibdeps/
+build/
+.clang_complete
+.gcc-flags.json
+
+# --- Arduino IDE specifika filer ---
+applet/
+*.el
+*.hex
+*.ino.cpp
+*.ino.with_bootloader.hex
+*.ino.elf
+*.ino.bin
+
+# --- Versionshantering och systemfiler ---
+.git/
+.gitignore
+.DS_Store
+Thumbs.db
+.vscode/
+
+# --- Stora datafiler eller dokumentation ---
+*.pdf
+*.zip
+*.tar.gz
+*.png
+*.jpg
+*.jpeg

@@ -39,11 +39,23 @@ const unsigned long DEVICE_TIMEOUT_CHECK_INTERVAL =
 const unsigned long PING_INTERVAL =
     10000;  // Send ping request every 10 seconds
 
+// Non-blocking WiFi connection
+enum class WiFiState { NEED_CONNECT, CONNECTING, CONNECTED, BACKOFF };
+static WiFiState wifiState = WiFiState::NEED_CONNECT;
+static unsigned long wifiLastActionTime = 0;
+static uint8_t wifiConnectAttempts = 0;
+static const unsigned long WIFI_POLL_INTERVAL =
+    500;  // Poll connection status every 500 ms while connecting
+static const unsigned long WIFI_BACKOFF_INTERVAL =
+    10000;  // Wait 10 s before retrying after a failed attempt
+static const uint8_t WIFI_MAX_POLL_ATTEMPTS =
+    20;  // ~10 s of polling before giving up and backing off
+
 // Forward declarations
 static void printWelcomeMessage(void);
 static void setupSpiffs();
 static void setupLoRa(void);
-static void setupWiFi(void);
+static void handleWiFi(void);
 static void setupMqtt(void);
 static void onDiscoveryMessage(uint8_t deviceId,
                                const DiscoveryItem& discovery);
@@ -73,8 +85,8 @@ void setup() {
   loRaMsg.setOnValueMessage(onValueMessage);
   setupLoRa();
 
-  // WiFi setup
-  setupWiFi();
+  // WiFi setup (kick off the non-blocking connection state machine)
+  handleWiFi();
 
   // MQTT setup and set message callback
   mqtt.setOnMessageReceived(mqttMsg.handleMessage);
@@ -89,11 +101,9 @@ void setup() {
 
 // Main loop function
 void loop() {
-  // Handle WiFi reconnection
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println(F("WiFi disconnected, attempting to reconnect..."));
-    setupWiFi();
-  } else {
+  handleWiFi();
+
+  if (WiFi.status() == WL_CONNECTED) {
     // Start WebServer if not already started and WiFi is connected
     static bool webServerStarted = false;
     if (!webServerStarted) {
@@ -169,49 +179,120 @@ static void printWelcomeMessage(void) {
   Serial.println(LORA_MY_ADDRESS);
 }
 
+// Number of retries before giving up and restarting the device. A hard
+// (infinite) lockup is undesirable for a gateway that is expected to run
+// unattended - if SPIFFS or the LoRa module fail to initialize (e.g. due to
+// a transient power-up glitch), we retry a few times and then perform a
+// clean restart instead of hanging forever.
+static const uint8_t INIT_MAX_ATTEMPTS = 5;
+static const unsigned long INIT_RETRY_DELAY_MS = 1000;
+
 static void setupSpiffs() {
   Serial.print(F("Initializing SPIFFS."));
-  if (!SPIFFS.begin(true)) {
-    Serial.println(F(" Failed!"));
-    while (1) {
-      delay(1000);
+
+  uint8_t attempts = 0;
+  while (!SPIFFS.begin(true)) {
+    attempts++;
+    Serial.print('.');
+
+    if (attempts >= INIT_MAX_ATTEMPTS) {
+      Serial.println(F(" Failed! Restarting device..."));
+      delay(INIT_RETRY_DELAY_MS);
+      ESP.restart();
     }
+
+    delay(INIT_RETRY_DELAY_MS);
   }
+
   Serial.println(F(" OK."));
 }
 
 static void setupLoRa() {
   Serial.print(F("Initializing LoRa."));
-  if (!loRa.begin(LORA_FREQUENCY)) {
-    Serial.println(F(" Failed!"));
-    while (1) {
-      delay(1000);
+
+  uint8_t attempts = 0;
+  while (!loRa.begin(LORA_FREQUENCY)) {
+    attempts++;
+    Serial.print('.');
+
+    if (attempts >= INIT_MAX_ATTEMPTS) {
+      Serial.println(F(" Failed! Restarting device..."));
+      delay(INIT_RETRY_DELAY_MS);
+      ESP.restart();
     }
+
+    delay(INIT_RETRY_DELAY_MS);
   }
+
   Serial.println(F(" OK."));
 }
 
-static void setupWiFi() {
-  Serial.print(F("Connecting to WiFi SSID"));
-  Serial.print(WIFI_SSID);
-  Serial.print('.');
+// Non-blocking WiFi connect/reconnect handler. This is a simple state
+// machine driven by millis() so it never blocks the LoRa/MQTT/WebServer
+// processing in loop():
+//
+//   NEED_CONNECT -> kick off WiFi.begin(), move to CONNECTING
+//   CONNECTING   -> poll WiFi.status() every WIFI_POLL_INTERVAL ms;
+//                   on success move to CONNECTED, on too many failed
+//                   polls move to BACKOFF
+//   CONNECTED    -> do nothing while connected; if the link drops, go
+//                   back to NEED_CONNECT
+//   BACKOFF      -> wait WIFI_BACKOFF_INTERVAL ms before trying again
+static void handleWiFi() {
+  const unsigned long now = millis();
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  switch (wifiState) {
+    case WiFiState::NEED_CONNECT: {
+      Serial.print(F("Connecting to WiFi SSID "));
+      Serial.print(WIFI_SSID);
+      Serial.print('.');
 
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
+      WiFi.mode(WIFI_STA);
+      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.print(F(" Connected. IP address="));
-    Serial.print(WiFi.localIP());
-    Serial.println('.');
-  } else {
-    Serial.println(F(" Failed! Will retry in main loop."));
+      wifiConnectAttempts = 0;
+      wifiLastActionTime = now;
+      wifiState = WiFiState::CONNECTING;
+      break;
+    }
+
+    case WiFiState::CONNECTING: {
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.print(F(" Connected. IP address="));
+        Serial.print(WiFi.localIP());
+        Serial.println('.');
+        wifiState = WiFiState::CONNECTED;
+        break;
+      }
+
+      if (now - wifiLastActionTime >= WIFI_POLL_INTERVAL) {
+        wifiLastActionTime = now;
+        wifiConnectAttempts++;
+        Serial.print('.');
+
+        if (wifiConnectAttempts >= WIFI_MAX_POLL_ATTEMPTS) {
+          Serial.println(F(" Failed! Will retry after backoff."));
+          wifiLastActionTime = now;
+          wifiState = WiFiState::BACKOFF;
+        }
+      }
+      break;
+    }
+
+    case WiFiState::CONNECTED: {
+      if (WiFi.status() != WL_CONNECTED) {
+        Serial.println(F("WiFi disconnected, attempting to reconnect..."));
+        wifiState = WiFiState::NEED_CONNECT;
+      }
+      break;
+    }
+
+    case WiFiState::BACKOFF: {
+      if (now - wifiLastActionTime >= WIFI_BACKOFF_INTERVAL) {
+        wifiState = WiFiState::NEED_CONNECT;
+      }
+      break;
+    }
   }
 }
 
