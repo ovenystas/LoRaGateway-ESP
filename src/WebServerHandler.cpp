@@ -1,689 +1,397 @@
 #include "WebServerHandler.h"
 
+#include <ArduinoJson.h>
 #include <SPIFFS.h>
 
-// Static instance for callback handlers
-static WebServerHandler* g_pWebServerHandler = nullptr;
+#include "Logger.h"
 
-// Static wrapper functions for WebServer callbacks
-static void handleRootWrapper() {
-  if (g_pWebServerHandler) g_pWebServerHandler->handleRoot();
-}
-
-static void handlePingWrapper() {
-  if (g_pWebServerHandler) g_pWebServerHandler->handlePing();
-}
-
-static void handleDiscoveryWrapper() {
-  if (g_pWebServerHandler) g_pWebServerHandler->handleDiscovery();
-}
-
-static void handleValueGetWrapper() {
-  if (g_pWebServerHandler) g_pWebServerHandler->handleValueGet();
-}
-
-static void handleValueSetWrapper() {
-  if (g_pWebServerHandler) g_pWebServerHandler->handleValueSet();
-}
-
-static void handleGetStatusWrapper() {
-  if (g_pWebServerHandler) g_pWebServerHandler->handleGetStatus();
-}
-
-static void handleNotFoundWrapper() {
-  if (g_pWebServerHandler) g_pWebServerHandler->handleNotFound();
-}
+static const char* JSON_CONTENT = "application/json";
 
 WebServerHandler::WebServerHandler(LoRaMsgHandler& loRaMsg,
                                    DeviceRegistry& registry, uint16_t port)
     : server(port),
+      ws("/ws"),
       loRaMsg(loRaMsg),
       deviceRegistry(registry),
       lastStatus(""),
-      routesRegistered(false) {
-  g_pWebServerHandler = this;
-}
+      started(false) {}
 
 bool WebServerHandler::begin() {
-  if (routesRegistered) {
-    return true;  // Already initialized
-  }
+  if (started) return true;
 
-  // Set up routes
-  server.on("/", HTTP_GET, handleRootWrapper);
-  server.on("/ping", HTTP_POST, handlePingWrapper);
-  server.on("/discovery", HTTP_POST, handleDiscoveryWrapper);
-  server.on("/ping", HTTP_POST, handlePingWrapper);
-  server.on("/value-get", HTTP_POST, handleValueGetWrapper);
-  server.on("/value-set", HTTP_POST, handleValueSetWrapper);
-  server.on("/status", HTTP_GET, handleGetStatusWrapper);
+  // Set up WebSocket with the event handler
+  ws.onEvent([this](AsyncWebSocket* server, AsyncWebSocketClient* client,
+                    AwsEventType type, void* arg, uint8_t* data, size_t len) {
+    this->onWsEvent(server, client, type, arg, data, len);
+  });
+  server.addHandler(&ws);
+
+  // Wire up Logger's WebSocket pointer so log messages are pushed in real time
+  logger.setWebSocket(&ws);
+
+  // Serve static files from SPIFFS. index.html is the default page.
+  server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
+
+  // --- REST endpoints ---
+
+  server.on("/ping", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    String deviceIdStr;
+    if (request->hasParam("deviceId", true)) {
+      deviceIdStr = request->getParam("deviceId", true)->value();
+    } else if (request->hasParam("deviceId", false)) {
+      deviceIdStr = request->getParam("deviceId", false)->value();
+    }
+
+    if (deviceIdStr.length() == 0) {
+      request->send(400, JSON_CONTENT, R"({"error":"Missing deviceId"})");
+      return;
+    }
+
+    uint8_t deviceId = atoi(deviceIdStr.c_str());
+    bool success = loRaMsg.sendPingRequest(deviceId);
+
+    if (success) {
+      lastStatus = String("Ping request sent to device ") + deviceId;
+      logger.printf(Logger::INF, "WebServer: %s", lastStatus.c_str());
+      request->send(200, JSON_CONTENT,
+                    R"({"success":true,"message":"Ping request sent"})");
+    } else {
+      lastStatus = String("Failed to send ping to device ") + deviceId;
+      logger.printf(Logger::ERR, "WebServer: %s", lastStatus.c_str());
+      request->send(
+          500, JSON_CONTENT,
+          R"({"success":false,"error":"Failed to send ping request"})");
+    }
+  });
+
+  server.on("/discovery", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    String deviceIdStr;
+    String entityIdStr;
+
+    if (request->hasParam("deviceId", true)) {
+      deviceIdStr = request->getParam("deviceId", true)->value();
+    } else if (request->hasParam("deviceId", false)) {
+      deviceIdStr = request->getParam("deviceId", false)->value();
+    }
+
+    if (request->hasParam("entityId", true)) {
+      entityIdStr = request->getParam("entityId", true)->value();
+    } else if (request->hasParam("entityId", false)) {
+      entityIdStr = request->getParam("entityId", false)->value();
+    }
+
+    if (deviceIdStr.length() == 0) {
+      request->send(400, JSON_CONTENT, R"({"error":"Missing deviceId"})");
+      return;
+    }
+
+    uint8_t deviceId = atoi(deviceIdStr.c_str());
+    uint8_t entityId = 255;  // Default: all entities
+    if (entityIdStr.length() > 0) {
+      entityId = atoi(entityIdStr.c_str());
+    }
+
+    bool success = loRaMsg.sendDiscoveryRequest(deviceId, entityId);
+
+    if (success) {
+      lastStatus = String("Discovery request sent to device ") + deviceId;
+      logger.printf(Logger::INF, "WebServer: %s", lastStatus.c_str());
+      request->send(200, JSON_CONTENT,
+                    R"({"success":true,"message":"Discovery request sent"})");
+    } else {
+      lastStatus = String("Failed to send discovery to device ") + deviceId;
+      logger.printf(Logger::ERR, "WebServer: %s", lastStatus.c_str());
+      request->send(
+          500, JSON_CONTENT,
+          R"({"success":false,"error":"Failed to send discovery request"})");
+    }
+  });
+
+  server.on("/value-get", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    String deviceIdStr;
+    String entityIdStr;
+
+    if (request->hasParam("deviceId", true)) {
+      deviceIdStr = request->getParam("deviceId", true)->value();
+    } else if (request->hasParam("deviceId", false)) {
+      deviceIdStr = request->getParam("deviceId", false)->value();
+    }
+    if (request->hasParam("entityId", true)) {
+      entityIdStr = request->getParam("entityId", true)->value();
+    } else if (request->hasParam("entityId", false)) {
+      entityIdStr = request->getParam("entityId", false)->value();
+    }
+
+    if (deviceIdStr.length() == 0 || entityIdStr.length() == 0) {
+      request->send(400, JSON_CONTENT,
+                    R"({"error":"Missing deviceId or entityId"})");
+      return;
+    }
+
+    uint8_t deviceId = atoi(deviceIdStr.c_str());
+    uint8_t entityId = atoi(entityIdStr.c_str());
+    bool success = loRaMsg.sendValueGetRequest(deviceId, entityId);
+
+    if (success) {
+      lastStatus = String("Value get request for entity ") + entityId +
+                   String(" sent to device ") + deviceId;
+      logger.printf(Logger::INF, "WebServer: %s", lastStatus.c_str());
+      request->send(200, JSON_CONTENT,
+                    R"({"success":true,"message":"Value get request sent"})");
+    } else {
+      lastStatus = String("Failed to send value get request for entity ") +
+                   entityId + String(" to device ") + deviceId;
+      logger.printf(Logger::ERR, "WebServer: %s", lastStatus.c_str());
+      request->send(
+          500, JSON_CONTENT,
+          R"({"success":false,"error":"Failed to send value get request"})");
+    }
+  });
+
+  server.on("/value-set", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    String deviceIdStr;
+    String entityIdStr;
+    String valueStr;
+
+    if (request->hasParam("deviceId", true)) {
+      deviceIdStr = request->getParam("deviceId", true)->value();
+    } else if (request->hasParam("deviceId", false)) {
+      deviceIdStr = request->getParam("deviceId", false)->value();
+    }
+    if (request->hasParam("entityId", true)) {
+      entityIdStr = request->getParam("entityId", true)->value();
+    } else if (request->hasParam("entityId", false)) {
+      entityIdStr = request->getParam("entityId", false)->value();
+    }
+    if (request->hasParam("value", true)) {
+      valueStr = request->getParam("value", true)->value();
+    } else if (request->hasParam("value", false)) {
+      valueStr = request->getParam("value", false)->value();
+    }
+
+    if (deviceIdStr.length() == 0 || entityIdStr.length() == 0 ||
+        valueStr.length() == 0) {
+      request->send(400, JSON_CONTENT,
+                    R"({"error":"Missing deviceId, entityId or value"})");
+      return;
+    }
+
+    const uint8_t deviceId = atoi(deviceIdStr.c_str());
+    const uint8_t entityId = atoi(entityIdStr.c_str());
+    const float value = atof(valueStr.c_str());
+
+    const EntityInfo* entity = deviceRegistry.getEntity(deviceId, entityId);
+    if (!entity) {
+      logger.printf(Logger::ERR, "Error: Entity %d not found on device %d",
+                    entityId, deviceId);
+      request->send(400, JSON_CONTENT,
+                    R"({"error":"Entity not found on device"})");
+      return;
+    }
+
+    const uint32_t rawValue = entity->format.toRawValue(value);
+    const bool success =
+        loRaMsg.sendValueSetRequest(deviceId, entityId, rawValue);
+
+    if (success) {
+      lastStatus = String("Value set request for entity ") + entityId +
+                   String(" with value ") + value + String(" sent to device ") +
+                   deviceId;
+      logger.printf(Logger::INF, "WebServer: %s", lastStatus.c_str());
+      request->send(200, JSON_CONTENT,
+                    R"({"success":true,"message":"Value set request sent"})");
+    } else {
+      lastStatus = String("Failed to send value set request for entity ") +
+                   entityId + String(" with value ") + value +
+                   String(" to device ") + deviceId;
+      logger.printf(Logger::ERR, "WebServer: %s", lastStatus.c_str());
+      request->send(
+          500, JSON_CONTENT,
+          R"({"success":false,"error":"Failed to send value set request"})");
+    }
+  });
+
+  server.on("/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    char json[256];
+    snprintf(json, sizeof(json), R"({"status":"%s"})", lastStatus.c_str());
+    request->send(200, JSON_CONTENT, json);
+  });
 
   // 404 handler
-  server.onNotFound(handleNotFoundWrapper);
+  server.onNotFound([](AsyncWebServerRequest* request) {
+    String message = "File Not Found\n\n";
+    message += "URI: " + request->url() + "\n";
+    message +=
+        "Method: " + String(request->method() == HTTP_GET ? "GET" : "POST") +
+        "\n";
+    message += "Arguments: " + String(request->params()) + "\n";
+
+    for (size_t i = 0; i < request->params(); i++) {
+      const AsyncWebParameter* p = request->getParam(i);
+      message += " " + p->name() + ": " + p->value() + "\n";
+    }
+
+    request->send(404, "text/plain", message);
+  });
 
   server.begin();
-  routesRegistered = true;
-  Serial.println(F("WebServer started on port 80"));
+  started = true;
+  logger.println(Logger::INF, F("AsyncWebServer started on port 80"));
   return true;
 }
 
-void WebServerHandler::handle() { server.handleClient(); }
-
-void WebServerHandler::stop() { server.stop(); }
-
-String WebServerHandler::getContentType(String filename) {
-  if (server.hasArg("download")) {
-    return "application/octet-stream";
-  } else if (filename.endsWith(".htm")) {
-    return "text/html";
-  } else if (filename.endsWith(".html")) {
-    return "text/html";
-  } else if (filename.endsWith(".css")) {
-    return "text/css";
-  } else if (filename.endsWith(".js")) {
-    return "application/javascript";
-  } else if (filename.endsWith(".png")) {
-    return "image/png";
-  } else if (filename.endsWith(".gif")) {
-    return "image/gif";
-  } else if (filename.endsWith(".jpg")) {
-    return "image/jpeg";
-  } else if (filename.endsWith(".ico")) {
-    return "image/x-icon";
-  } else if (filename.endsWith(".xml")) {
-    return "text/xml";
-  } else if (filename.endsWith(".pdf")) {
-    return "application/x-pdf";
-  } else if (filename.endsWith(".zip")) {
-    return "application/x-zip";
-  } else if (filename.endsWith(".gz")) {
-    return "application/x-gzip";
-  }
-  return "text/plain";
+void WebServerHandler::stop() {
+  server.end();
+  started = false;
+  logger.setWebSocket(nullptr);
 }
 
-bool WebServerHandler::exists(String path) {
-  bool yes = false;
-  File file = SPIFFS.open(path, "r");
-  if (!file.isDirectory()) {
-    yes = true;
-  }
-  file.close();
-  return yes;
-}
+void WebServerHandler::onWsEvent(AsyncWebSocket* server,
+                                 AsyncWebSocketClient* client,
+                                 AwsEventType type, void* arg, uint8_t* data,
+                                 size_t len) {
+  switch (type) {
+    case WS_EVT_CONNECT:
+      logger.printf(Logger::INF, "WebSocket client #%u connected",
+                    client->id());
+      sendInitToClient(client);
+      break;
 
-bool WebServerHandler::handleFileRead(String path) {
-  Serial.println("handleFileRead: " + path);
-  if (path.endsWith("/")) {
-    path += "index.htm";
-  }
-  String contentType = getContentType(path);
-  String pathWithGz = path + ".gz";
-  if (exists(pathWithGz) || exists(path)) {
-    if (exists(pathWithGz)) {
-      path += ".gz";
+    case WS_EVT_DISCONNECT:
+      logger.printf(Logger::INF, "WebSocket client #%u disconnected",
+                    client->id());
+      break;
+
+    case WS_EVT_DATA: {
+      AwsFrameInfo* info = (AwsFrameInfo*)arg;
+      if (info->final && info->index == 0 && info->len == len &&
+          info->opcode == WS_TEXT) {
+        data[len] = '\0';
+        handleWsMessage(client, String((char*)data));
+      }
+      break;
     }
-    File file = SPIFFS.open(path, "r");
-    server.streamFile(file, contentType);
-    file.close();
-    return true;
-  }
-  return false;
-}
 
-void WebServerHandler::handleRoot() {
-  if (!handleFileRead("/index.html")) {
-    server.send(404, "text/plain", "FileNotFound");
+    case WS_EVT_ERROR:
+      logger.printf(Logger::ERR, "WebSocket error on client #%u", client->id());
+      break;
+
+    default:
+      break;
   }
 }
 
-void WebServerHandler::handlePing() {
-  // Get device ID from POST data
-  String deviceIdStr = "";
+void WebServerHandler::sendInitToClient(AsyncWebSocketClient* client) {
+  if (!client) return;
 
-  if (server.hasArg("deviceId")) {
-    deviceIdStr = server.arg("deviceId");
-  } else if (server.method() == HTTP_POST && server.args() > 0) {
-    // Try to get from POST body
-    for (int i = 0; i < server.args(); i++) {
-      if (server.argName(i) == "deviceId") {
-        deviceIdStr = server.arg(i);
-        break;
+  // Send settings
+  char initBuf[256];
+  snprintf(initBuf, sizeof(initBuf),
+           R"({"type":"init","webEnabled":%s,"level":"%s"})",
+           logger.isWebEnabled() ? "true" : "false",
+           Logger::levelToString(logger.getMaxLevel()));
+  client->text(initBuf);
+
+  // Send buffered log history (one message per entry)
+  const auto& history = logger.getBufferedEntries();
+  for (const auto& entry : history) {
+    char logBuf[512];
+    int hdr =
+        snprintf(logBuf, sizeof(logBuf),
+                 R"({"type":"log","level":"%s","timestamp":%lu,"message":")",
+                 Logger::levelToString(entry.level), entry.timestamp);
+
+    size_t pos = hdr;
+    for (size_t i = 0; i < entry.message.length() && pos < sizeof(logBuf) - 4;
+         i++) {
+      char c = entry.message[i];
+      if (c == '"') {
+        if (pos + 1 < sizeof(logBuf) - 4) {
+          logBuf[pos++] = '\\';
+          logBuf[pos++] = '"';
+        }
+      } else if (c == '\\') {
+        if (pos + 1 < sizeof(logBuf) - 4) {
+          logBuf[pos++] = '\\';
+          logBuf[pos++] = '\\';
+        }
+      } else if (c == '\n') {
+        if (pos + 1 < sizeof(logBuf) - 4) {
+          logBuf[pos++] = '\\';
+          logBuf[pos++] = 'n';
+        }
+      } else if (c == '\r') {
+        if (pos + 1 < sizeof(logBuf) - 4) {
+          logBuf[pos++] = '\\';
+          logBuf[pos++] = 'r';
+        }
+      } else if (c == '\t') {
+        if (pos + 1 < sizeof(logBuf) - 4) {
+          logBuf[pos++] = '\\';
+          logBuf[pos++] = 't';
+        }
+      } else if (c < 0x20) {
+        // Skip control characters
+      } else {
+        logBuf[pos++] = c;
       }
     }
-  }
+    logBuf[pos++] = '"';
+    logBuf[pos++] = '}';
+    logBuf[pos] = '\0';
 
-  if (deviceIdStr.length() == 0) {
-    server.send(400, "application/json", R"({"error":"Missing deviceId"})");
-    return;
-  }
-
-  uint8_t deviceId = atoi(deviceIdStr.c_str());
-
-  bool success = loRaMsg.sendPingRequest(deviceId);
-
-  if (success) {
-    lastStatus = String("Ping request sent to device ") + deviceId;
-    Serial.print(F("WebServer: "));
-    Serial.println(lastStatus);
-    server.send(200, "application/json",
-                R"({"success":true,"message":"Ping request sent"})");
-  } else {
-    lastStatus = String("Failed to send ping to device ") + deviceId;
-    Serial.print(F("WebServer: "));
-    Serial.println(lastStatus);
-    server.send(500, "application/json",
-                R"({"success":false,"error":"Failed to send ping request"})");
+    client->text(logBuf);
   }
 }
 
-void WebServerHandler::handleDiscovery() {
-  // Get device ID from POST data
-  String deviceIdStr = "";
-  String entityIdStr = "";
+void WebServerHandler::handleWsMessage(AsyncWebSocketClient* client,
+                                       const String& message) {
+  // Parse incoming JSON command from the web UI.
+  // Expected formats:
+  //   {"type":"setLogLevel","level":2}
+  //   {"type":"toggleWebLog","enabled":true}
 
-  if (server.hasArg("deviceId")) {
-    deviceIdStr = server.arg("deviceId");
-  } else if (server.method() == HTTP_POST && server.args() > 0) {
-    // Try to get from POST body
-    for (int i = 0; i < server.args(); i++) {
-      if (server.argName(i) == "deviceId") {
-        deviceIdStr = server.arg(i);
-      } else if (server.argName(i) == "entityId") {
-        entityIdStr = server.arg(i);
-      }
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, message);
+
+  if (error) {
+    logger.printf(Logger::WRN, "Invalid WebSocket message: %s",
+                  message.c_str());
+    return;
+  }
+
+  const char* msgType = doc["type"];
+  if (!msgType) return;
+
+  if (strcmp(msgType, "setLogLevel") == 0) {
+    int level = doc["level"] | -1;
+    if (level >= Logger::ERR && level <= Logger::DBG) {
+      logger.setMaxLevel(static_cast<Logger::Level>(level));
+      logger.printf(Logger::INF, "Log level set to %s",
+                    Logger::levelToString(static_cast<Logger::Level>(level)));
+
+      // Notify all clients of the updated level
+      char buf[128];
+      snprintf(buf, sizeof(buf),
+               R"({"type":"logSettings","webEnabled":%s,"level":"%s"})",
+               logger.isWebEnabled() ? "true" : "false",
+               Logger::levelToString(logger.getMaxLevel()));
+      ws.textAll(buf);
     }
+  } else if (strcmp(msgType, "toggleWebLog") == 0) {
+    bool enabled = doc["enabled"] | false;
+    logger.setWebEnabled(enabled);
+    logger.printf(Logger::INF, "Web logging %s",
+                  enabled ? "enabled" : "disabled");
+
+    // Notify all clients
+    char buf[128];
+    snprintf(buf, sizeof(buf),
+             R"({"type":"logSettings","webEnabled":%s,"level":"%s"})",
+             logger.isWebEnabled() ? "true" : "false",
+             Logger::levelToString(logger.getMaxLevel()));
+    ws.textAll(buf);
   }
-
-  if (deviceIdStr.length() == 0) {
-    server.send(400, "application/json", R"({"error":"Missing deviceId"})");
-    return;
-  }
-
-  uint8_t deviceId = atoi(deviceIdStr.c_str());
-  uint8_t entityId = 255;  // Default: all entities
-
-  // Get entity ID if provided
-  if (server.hasArg("entityId")) {
-    entityId = atoi(server.arg("entityId").c_str());
-  } else if (entityIdStr.length() > 0) {
-    entityId = atoi(entityIdStr.c_str());
-  }
-
-  bool success = loRaMsg.sendDiscoveryRequest(deviceId, entityId);
-
-  if (success) {
-    lastStatus = String("Discovery request sent to device ") + deviceId;
-    Serial.print(F("WebServer: "));
-    Serial.println(lastStatus);
-    server.send(200, "application/json",
-                R"({"success":true,"message":"Discovery request sent"})");
-  } else {
-    lastStatus = String("Failed to send discovery to device ") + deviceId;
-    Serial.print(F("WebServer: "));
-    Serial.println(lastStatus);
-    server.send(
-        500, "application/json",
-        R"({"success":false,"error":"Failed to send discovery request"})");
-  }
-}
-
-void WebServerHandler::handleValueGet() {
-  // Get device ID from POST data
-  String deviceIdStr = "";
-  String entityIdStr = "";
-
-  if (server.hasArg("deviceId") && server.hasArg("entityId")) {
-    deviceIdStr = server.arg("deviceId");
-    entityIdStr = server.arg("entityId");
-  } else {
-    server.send(400, "application/json",
-                R"({"error":"Missing deviceId or entityId"})");
-    return;
-  }
-
-  uint8_t deviceId = atoi(deviceIdStr.c_str());
-  uint8_t entityId = atoi(entityIdStr.c_str());
-
-  bool success = loRaMsg.sendValueGetRequest(deviceId, entityId);
-
-  if (success) {
-    lastStatus = String("Value get request for entity ") + entityId +
-                 String(" sent to device ") + deviceId;
-    Serial.print(F("WebServer: "));
-    Serial.println(lastStatus);
-    server.send(200, "application/json",
-                R"({"success":true,"message":"Value get request sent"})");
-  } else {
-    lastStatus = String("Failed to send value get request for entity ") +
-                 entityId + String(" to device ") + deviceId;
-    Serial.print(F("WebServer: "));
-    Serial.println(lastStatus);
-    server.send(
-        500, "application/json",
-        R"({"success":false,"error":"Failed to send value get request"})");
-  }
-}
-
-void WebServerHandler::handleValueSet() {
-  // Get device ID from POST data
-  String deviceIdStr = "";
-  String entityIdStr = "";
-  String valueStr = "";
-
-  if (server.hasArg("deviceId") && server.hasArg("entityId") &&
-      server.hasArg("value")) {
-    deviceIdStr = server.arg("deviceId");
-    entityIdStr = server.arg("entityId");
-    valueStr = server.arg("value");
-  } else {
-    server.send(400, "application/json",
-                R"({"error":"Missing deviceId, entityId or value"})");
-    return;
-  }
-
-  const uint8_t deviceId = atoi(deviceIdStr.c_str());
-  const uint8_t entityId = atoi(entityIdStr.c_str());
-  const float value = atof(valueStr.c_str());
-
-  const EntityInfo* entity = deviceRegistry.getEntity(deviceId, entityId);
-  if (!entity) {
-    Serial.print("Error: Entity ");
-    Serial.print(entityId);
-    Serial.print(" not found on device ");
-    Serial.println(deviceId);
-    return;
-  }
-
-  const uint32_t rawValue = entity->format.toRawValue(value);
-
-  const bool success =
-      loRaMsg.sendValueSetRequest(deviceId, entityId, rawValue);
-
-  if (success) {
-    lastStatus = String("Value set request for entity ") + entityId +
-                 String(" with value ") + value + String(" sent to device ") +
-                 deviceId;
-    Serial.print(F("WebServer: "));
-    Serial.println(lastStatus);
-    server.send(200, "application/json",
-                R"({"success":true,"message":"Value set request sent"})");
-  } else {
-    lastStatus = String("Failed to send value set request for entity ") +
-                 entityId + String(" with value ") + value +
-                 String(" to device ") + deviceId;
-    Serial.print(F("WebServer: "));
-    Serial.println(lastStatus);
-    server.send(
-        500, "application/json",
-        R"({"success":false,"error":"Failed to send value set request"})");
-  }
-}
-
-void WebServerHandler::handleGetStatus() {
-  String json = R"({"status":")" + lastStatus + R"("})";
-  server.send(200, "application/json", json);
-}
-
-void WebServerHandler::handleNotFound() {
-  String message = "File Not Found\n\n";
-  message += "URI: ";
-  message += server.uri();
-  message += "\nMethod: ";
-  message += (server.method() == HTTP_GET) ? "GET" : "POST";
-  message += "\nArguments: ";
-  message += server.args();
-  message += "\n";
-
-  for (int i = 0; i < server.args(); i++) {
-    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
-  }
-
-  server.send(404, "text/plain", message);
-}
-
-const char* WebServerHandler::getHtmlPage() {
-  return R"EOF(
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LoRa Gateway Control</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-            padding: 40px;
-            max-width: 600px;
-            width: 100%;
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 28px;
-        }
-        .subtitle {
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 14px;
-        }
-        .form-group {
-            margin-bottom: 25px;
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #333;
-            font-weight: 500;
-            font-size: 14px;
-        }
-        input[type="text"],
-        input[type="number"],
-        select {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
-            font-size: 14px;
-            transition: border-color 0.3s;
-        }
-        input[type="text"]:focus,
-        input[type="number"]:focus,
-        select:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        .button-group {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-top: 30px;
-        }
-        button {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 6px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .btn-ping {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-        .btn-value {
-            background: linear-gradient(135deg, #66e6ea 0%, #4b67a2 100%);
-            color: white;
-        }
-        .btn-ping:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
-        }
-        .btn-ping:active {
-            transform: translateY(0);
-        }
-        .btn-discovery {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            color: white;
-        }
-        .btn-discovery:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(245, 87, 108, 0.4);
-        }
-        .btn-discovery:active {
-            transform: translateY(0);
-        }
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .status-message {
-            margin-top: 30px;
-            padding: 15px;
-            border-radius: 6px;
-            display: none;
-            font-size: 14px;
-            font-weight: 500;
-        }
-        .status-message.show {
-            display: block;
-        }
-        .status-message.success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        .status-message.error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        .spinner {
-            display: inline-block;
-            width: 14px;
-            height: 14px;
-            border: 2px solid rgba(0, 0, 0, 0.1);
-            border-radius: 50%;
-            border-top-color: #667eea;
-            animation: spin 0.6s linear infinite;
-            margin-right: 8px;
-            vertical-align: middle;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .info-box {
-            background-color: #e7f3ff;
-            border-left: 4px solid #667eea;
-            padding: 12px;
-            margin-bottom: 25px;
-            border-radius: 4px;
-            font-size: 13px;
-            color: #004085;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>LoRa Gateway Control</h1>
-        <p class="subtitle">Send commands to LoRa devices</p>
-
-        <div class="info-box">
-            💡 Enter a device ID and select an action to control remote LoRa devices.
-        </div>
-
-        <form id="commandForm">
-            <div class="form-group">
-                <label for="deviceId">Device ID</label>
-                <input type="number" id="deviceId" name="deviceId" min="0" max="255" placeholder="Enter device ID (0-255)" required>
-            </div>
-
-            <div class="form-group">
-                <label for="entityId">Entity ID (Optional)</label>
-                <input type="number" id="entityId" name="entityId" min="0" max="255" placeholder="Leave empty for all entities">
-            </div>
-
-            <div class="button-group">
-                <button type="button" class="btn-ping" id="pingBtn" onclick="sendPing()">📡 Send Ping</button>
-                <button type="button" class="btn-discovery" id="discoveryBtn" onclick="sendDiscovery()">🔍 Send Discovery</button>
-                <button type="button" class="btn-value" id="valueBtn" onclick="sendValueRequest()">🫴 Get Value</button>
-            </div>
-        </form>
-
-        <div id="statusMessage" class="status-message"></div>
-    </div>
-
-    <script>
-        const statusMsg = document.getElementById('statusMessage');
-        const pingBtn = document.getElementById('pingBtn');
-        const discoveryBtn = document.getElementById('discoveryBtn');
-        const deviceIdInput = document.getElementById('deviceId');
-        const entityIdInput = document.getElementById('entityId');
-
-        function showStatus(message, isSuccess, isLoading = false) {
-            statusMsg.textContent = '';
-            if (isLoading) {
-                const spinner = document.createElement('span');
-                spinner.className = 'spinner';
-                statusMsg.appendChild(spinner);
-                statusMsg.appendChild(document.createTextNode(message));
-            } else {
-                statusMsg.textContent = message;
-            }
-            statusMsg.className = 'status-message show ' + (isSuccess ? 'success' : 'error');
-        }
-
-        function setButtonsDisabled(disabled) {
-            pingBtn.disabled = disabled;
-            discoveryBtn.disabled = disabled;
-            deviceIdInput.disabled = disabled;
-            entityIdInput.disabled = disabled;
-        }
-
-        async function sendPing() {
-            const deviceId = document.getElementById('deviceId').value;
-            if (!deviceId) {
-                showStatus('Please enter a device ID', false);
-                return;
-            }
-
-            setButtonsDisabled(true);
-            showStatus('Sending ping request...', true, true);
-
-            try {
-                const response = await fetch('/ping', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: 'deviceId=' + encodeURIComponent(deviceId)
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    showStatus('✓ Ping sent to device ' + deviceId, true);
-                } else {
-                    showStatus('✗ Failed to send ping: ' + (data.error || 'Unknown error'), false);
-                }
-            } catch (error) {
-                showStatus('✗ Network error: ' + error.message, false);
-            } finally {
-                setButtonsDisabled(false);
-            }
-        }
-
-        async function sendDiscovery() {
-            const deviceId = document.getElementById('deviceId').value;
-            const entityId = document.getElementById('entityId').value;
-
-            if (!deviceId) {
-                showStatus('Please enter a device ID', false);
-                return;
-            }
-
-            setButtonsDisabled(true);
-            showStatus('Sending discovery request...', true, true);
-
-            try {
-                let body = 'deviceId=' + encodeURIComponent(deviceId);
-                if (entityId) {
-                    body += '&entityId=' + encodeURIComponent(entityId);
-                }
-
-                const response = await fetch('/discovery', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: body
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    showStatus('✓ Discovery sent to device ' + deviceId, true);
-                } else {
-                    showStatus('✗ Failed to send discovery: ' + (data.error || 'Unknown error'), false);
-                }
-            } catch (error) {
-                showStatus('✗ Network error: ' + error.message, false);
-            } finally {
-                setButtonsDisabled(false);
-            }
-        }
-
-        async function sendValueRequest() {
-            const deviceId = document.getElementById('deviceId').value;
-            const entityId = document.getElementById('entityId').value;
-
-            if (!deviceId) {
-                showStatus('Please enter a device ID', false);
-                return;
-            }
-
-            setButtonsDisabled(true);
-            showStatus('Sending value request...', true, true);
-
-            try {
-                let body = 'deviceId=' + encodeURIComponent(deviceId);
-                if (entityId) {
-                    body += '&entityId=' + encodeURIComponent(entityId);
-                }
-
-                const response = await fetch('/value', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: body
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    showStatus('✓ Value request sent to device ' + deviceId, true);
-                } else {
-                    showStatus('✗ Failed to send value request: ' + (data.error || 'Unknown error'), false);
-                }
-            } catch (error) {
-                showStatus('✗ Network error: ' + error.message, false);
-            } finally {
-                setButtonsDisabled(false);
-            }
-        }
-
-        // Allow Enter key to trigger value request
-        document.getElementById('entityId').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                sendValueRequest();
-            }
-        });
-    </script>
-</body>
-</html>
-)EOF";
 }
 
 String WebServerHandler::urlDecode(const String& input) {

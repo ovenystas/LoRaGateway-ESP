@@ -3,6 +3,8 @@
 #include <ArduinoJson.h>
 #include <stdio.h>
 
+#include "Logger.h"
+
 MqttHandler::MqttHandler(WiFiClient& wifiClient)
     : wifiClient(wifiClient), onMessageReceived(nullptr) {
   client.setClient(wifiClient);
@@ -20,7 +22,7 @@ void MqttHandler::setupCallback() {
 bool MqttHandler::connect(const char* broker, uint16_t port,
                           const char* clientId) {
   if (!broker || !clientId) {
-    Serial.println(F("Error: broker or clientId is null"));
+    logger.println(Logger::ERR, F("Error: broker or clientId is null"));
     return false;
   }
 
@@ -33,7 +35,8 @@ bool MqttHandler::connect(const char* broker, uint16_t port,
                           const char* clientId, const char* username,
                           const char* password) {
   if (!broker || !clientId || !username || !password) {
-    Serial.println(F("Error: broker, clientId, username, or password is null"));
+    logger.println(Logger::ERR,
+                   F("Error: broker, clientId, username, or password is null"));
     return false;
   }
 
@@ -127,14 +130,12 @@ bool MqttHandler::subscribeToCommands(uint8_t deviceId, uint8_t entityId,
 bool MqttHandler::publishDiscovery(const EntityInfo& entity,
                                    const char* nodePrefix) {
   if (!nodePrefix) {
-    Serial.println(F("Error: nodePrefix is null"));
+    logger.println(Logger::ERR, F("Error: nodePrefix is null"));
     return false;
   }
 
-  Serial.print(F("Publishing discovery for entity: "));
-  Serial.print(entity.entityId);
-  Serial.print(':');
-  Serial.println(entity.name);
+  logger.printf(Logger::DBG, "Publishing discovery for entity: %u:%s",
+                entity.entityId, entity.name.c_str());
 
   char topic[128];
   char payload[512];
@@ -194,8 +195,7 @@ bool MqttHandler::publishDiscovery(const EntityInfo& entity,
   snprintf(valueTemplate, sizeof(valueTemplate), "{{ value_json['%u_%s'] }}",
            entity.entityId,
            entity.deviceClass ? entity.deviceClass->getName() : "unknown");
-  Serial.print(F("Value template: "));
-  Serial.println(valueTemplate);
+  logger.printf(Logger::DBG, "Value template: %s", valueTemplate);
   doc["value_template"] = valueTemplate;
 
   // Device info
@@ -227,12 +227,10 @@ bool MqttHandler::publishDiscovery(const EntityInfo& entity,
 
   serializeJson(doc, payload, sizeof(payload));
 
-  Serial.print("Publishing discovery for entity: ");
-  Serial.println(entity.name);
-  Serial.print("    topic: ");
-  Serial.println(topic);
-  Serial.print("    Payload: ");
-  Serial.println(payload);
+  logger.printf(Logger::DBG, "Publishing discovery for entity: %s",
+                entity.name.c_str());
+  logger.printf(Logger::DBG, "    topic: %s", topic);
+  logger.printf(Logger::DBG, "    Payload: %s", payload);
   const bool result =
       client.publish(topic, payload, true);  // Retain discovery message
 
@@ -247,7 +245,7 @@ void MqttHandler::setOnMessageReceived(void (*callback)(const char*,
 
 void MqttHandler::handle() {
   if (!client.connected()) {
-    Serial.println(F("MQTT reconnecting..."));
+    logger.println(Logger::INF, F("MQTT reconnecting..."));
     // Attempt reconnection (non-blocking, returns immediately if fails)
     client.connect("LoRaGateway");
   } else {

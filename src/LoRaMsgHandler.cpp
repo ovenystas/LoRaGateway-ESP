@@ -4,6 +4,8 @@
 
 #include <vector>
 
+#include "Logger.h"
+
 // Initialize static instance
 LoRaMsgHandler* LoRaMsgHandler::instance = nullptr;
 
@@ -24,21 +26,14 @@ void LoRaMsgHandler::setOnValueMessage(
 }
 
 void LoRaMsgHandler::handleMessage(const LoRaRxMessage& msg) {
-  Serial.print("LoRa message received from Device ");
-  Serial.print(msg.header.src);
-  Serial.print(", Type: ");
-  Serial.print(static_cast<uint8_t>(msg.header.flags.msgType));
-  Serial.print(", ID: ");
-  Serial.print(msg.header.id);
-  Serial.print(", Dst: ");
-  Serial.print(msg.header.dst);
-  Serial.print(", PayloadLen: ");
-  Serial.print(msg.payloadLength);
-  Serial.print(", RSSI: ");
-  Serial.println(msg.rssi);
-  Serial.print("    Raw payload: ");
-  printArray(Serial, msg.payload, msg.payloadLength, HEX);
-  Serial.println();
+  logger.printf(Logger::DBG,
+                "LoRa message from Device %u, Type: %u, ID: %u, Dst: %u, "
+                "PayloadLen: %u, RSSI: %d",
+                msg.header.src, static_cast<uint8_t>(msg.header.flags.msgType),
+                msg.header.id, msg.header.dst, msg.payloadLength, msg.rssi);
+  logger.print(Logger::DBG, "    Raw payload: ");
+  printArray(logger, msg.payload, msg.payloadLength, HEX);
+  logger.println(Logger::DBG);
 
   // Handle different message types
   switch (msg.header.flags.msgType) {
@@ -54,7 +49,8 @@ void LoRaMsgHandler::handleMessage(const LoRaRxMessage& msg) {
 
     case LoRaMsgType::discovery_req: {
       // handleDiscoveryRequest(msg);
-      Serial.println(F("Discovery request handling not implemented yet"));
+      logger.println(Logger::WRN,
+                     F("Discovery request handling not implemented yet"));
       break;
     }
 
@@ -65,7 +61,8 @@ void LoRaMsgHandler::handleMessage(const LoRaRxMessage& msg) {
 
     case LoRaMsgType::value_req: {
       // handleValueRequest(msg);
-      Serial.println(F("Value request handling not implemented yet"));
+      logger.println(Logger::WRN,
+                     F("Value request handling not implemented yet"));
       break;
     }
 
@@ -76,31 +73,28 @@ void LoRaMsgHandler::handleMessage(const LoRaRxMessage& msg) {
 
     case LoRaMsgType::valueSet_req: {
       // handleValueSetRequest(msg);
-      Serial.println(F("Value set request handling not implemented yet"));
+      logger.println(Logger::WRN,
+                     F("Value set request handling not implemented yet"));
       break;
     }
 
     default:
-      Serial.print("Unknown message type: ");
-      Serial.println(static_cast<uint8_t>(msg.header.flags.msgType));
+      logger.printf(Logger::WRN, "Unknown message type: %u",
+                    static_cast<uint8_t>(msg.header.flags.msgType));
       break;
   }
 }
 
 void LoRaMsgHandler::handlePingMessage(const LoRaRxMessage& msg) {
   // Ping response received
-  Serial.print("Ping response from Device ");
-  Serial.print(msg.header.src);
-  Serial.print(" - RSSI: ");
-  Serial.print(msg.rssi);
-  Serial.println(" dBm");
+  logger.printf(Logger::INF, "Ping response from Device %u - RSSI: %d dBm",
+                msg.header.src, msg.rssi);
 
   // Extract device's RSSI if present in payload
   if (msg.payloadLength >= 2) {
     int16_t deviceRssi = ((int16_t)msg.payload[0] << 8) | msg.payload[1];
-    Serial.print("    Device's signal strength: ");
-    Serial.print(deviceRssi);
-    Serial.println(" dBm");
+    logger.printf(Logger::DBG, "    Device's signal strength: %d dBm",
+                  deviceRssi);
   }
 }
 
@@ -116,8 +110,7 @@ void LoRaMsgHandler::handlePingRequest(const LoRaRxMessage& msg) {
 }
 
 void LoRaMsgHandler::handleValueMessage(const LoRaRxMessage& msg) {
-  Serial.print("Value message from Device ");
-  Serial.println(msg.header.src);
+  logger.printf(Logger::INF, "Value message from Device %u", msg.header.src);
 
   uint8_t deviceId = msg.header.src;
   //   deviceRegistry.updateDeviceLastSeen(deviceId);
@@ -125,14 +118,12 @@ void LoRaMsgHandler::handleValueMessage(const LoRaRxMessage& msg) {
   // Parse value payload
   if (msg.payloadLength > 0) {
     uint8_t numValues = msg.payload[0];
-    Serial.print("    Number of values: ");
-    Serial.println(numValues);
+    logger.printf(Logger::DBG, "    Number of values: %u", numValues);
     if (msg.payloadLength != 1 + numValues * ValueItem::size()) {
-      Serial.println(
-          "    Payload size not correct for number of values, ignoring");
-      {
-        return;
-      };
+      logger.println(
+          Logger::WRN,
+          F("    Payload size not correct for number of values, ignoring"));
+      return;
     }
 
     std::vector<ValueItem> valueItems;
@@ -141,12 +132,8 @@ void LoRaMsgHandler::handleValueMessage(const LoRaRxMessage& msg) {
       ValueItem valueItem;
       valueItem.fromByteArray(valuePtr);
 
-      Serial.print("    #");
-      Serial.print(i);
-      Serial.print(": Entity ID=");
-      Serial.print(valueItem.entityId);
-      Serial.print(", Value=");
-      Serial.println(valueItem.value);
+      logger.printf(Logger::DBG, "    #%u: Entity ID=%u, Value=%d", i,
+                    valueItem.entityId, valueItem.value);
 
       valueItems.push_back(valueItem);
     }
@@ -155,35 +142,26 @@ void LoRaMsgHandler::handleValueMessage(const LoRaRxMessage& msg) {
 }
 
 void LoRaMsgHandler::handleDiscoveryMessage(const LoRaRxMessage& msg) {
-  Serial.print("Discovery message from Device ");
-  Serial.println(msg.header.src);
+  logger.printf(Logger::INF, "Discovery message from Device %u",
+                msg.header.src);
 
   // Parse discovery payload
   if (msg.payloadLength >= DiscoveryItem::size()) {
     DiscoveryItem discovery;
     discovery.fromByteArray(msg.payload, msg.payloadLength);
 
-    Serial.print("    Entity ID: ");
-    Serial.print(discovery.entityId);
-    Serial.print(", Name: ");
-    Serial.print(discovery.name);
-    Serial.print(", Type: ");
-    Serial.print(discovery.domain.getName());
-    Serial.print(", Device Class: ");
-    Serial.print(discovery.deviceClass ? discovery.deviceClass->getName()
-                                       : "unknown");
-    Serial.print(", Category: ");
-    Serial.print(discovery.category.getName());
-    Serial.print(", Unit: ");
-    Serial.print(discovery.unit.getName());
-    Serial.print(", Format: (");
-    discovery.format.print(Serial);
-    Serial.print("), Min=");
-    Serial.print(discovery.format.fromRawValue(discovery.minValue),
-                 discovery.format.getPrecision());
-    Serial.print(", Max=");
-    Serial.println(discovery.format.fromRawValue(discovery.maxValue),
-                   discovery.format.getPrecision());
+    logger.printf(
+        Logger::DBG,
+        "    Entity ID: %u, Name: %s, Type: %s, Device Class: %s, Category: "
+        "%s, Unit: %s",
+        discovery.entityId, discovery.name, discovery.domain.getName(),
+        discovery.deviceClass ? discovery.deviceClass->getName() : "unknown",
+        discovery.category.getName(), discovery.unit.getName());
+    logger.print(Logger::DBG, "    Format: (");
+    discovery.format.print(logger);
+    logger.printf(Logger::DBG, "), Min=%f, Max=%f",
+                  discovery.format.fromRawValue(discovery.minValue),
+                  discovery.format.fromRawValue(discovery.maxValue));
 
     const uint8_t deviceId = msg.header.src;
     onDiscoveryMessage(deviceId, discovery);
@@ -222,7 +200,8 @@ bool LoRaMsgHandler::sendValueGetRequest(uint8_t targetDeviceId,
 bool LoRaMsgHandler::sendValueSetRequest(uint8_t targetDeviceId,
                                          uint8_t entityId, uint32_t value) {
   if (entityId == 255) {
-    Serial.println("Entity ID cannot be 255 for value set request");
+    logger.println(Logger::ERR,
+                   F("Entity ID cannot be 255 for value set request"));
     return false;
   }
 
@@ -236,12 +215,9 @@ bool LoRaMsgHandler::sendValueSetRequest(uint8_t targetDeviceId,
   msg.payload[3] = (value >> 8) & 0xFF;
   msg.payload[4] = value & 0xFF;
 
-  Serial.print("Sending value set command to Device ");
-  Serial.print(targetDeviceId);
-  Serial.print(", Entity ");
-  Serial.print(entityId);
-  Serial.print(", Value ");
-  Serial.println(value);
+  logger.printf(Logger::INF,
+                "Sending value set command to Device %u, Entity %u, Value %u",
+                targetDeviceId, entityId, value);
 
   return loRa.sendMessage(msg);
 }
@@ -255,12 +231,9 @@ bool LoRaMsgHandler::sendServiceCommand(uint8_t targetDeviceId,
   msg.payload[0] = entityId;
   msg.payload[1] = command;
 
-  Serial.print("Sending service command to Device ");
-  Serial.print(targetDeviceId);
-  Serial.print(", Entity ");
-  Serial.print(entityId);
-  Serial.print(", Command ");
-  Serial.println(command);
+  logger.printf(Logger::INF,
+                "Sending service command to Device %u, Entity %u, Command %u",
+                targetDeviceId, entityId, command);
 
   return loRa.sendMessage(msg);
 }

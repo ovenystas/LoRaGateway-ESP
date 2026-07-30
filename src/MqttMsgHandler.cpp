@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "Logger.h"
+
 // Static member initialization
 LoRaMsgHandler* MqttMsgHandler::loRaMsgHandler = nullptr;
 DeviceRegistry* MqttMsgHandler::deviceRegistry = nullptr;
@@ -62,8 +64,8 @@ bool MqttMsgHandler::checkRateLimit(uint8_t deviceId) {
           return true;
         } else {
           // Rate limit exceeded
-          Serial.print("Warning: Rate limit exceeded for device ");
-          Serial.println(deviceId);
+          logger.printf(Logger::WRN, "Rate limit exceeded for device %u",
+                        deviceId);
           return false;
         }
       }
@@ -94,7 +96,7 @@ bool MqttMsgHandler::checkRateLimit(uint8_t deviceId) {
   }
 
   // Still full after cleanup
-  Serial.println("Error: Rate limit table full");
+  logger.println(Logger::ERR, F("Rate limit table full"));
   return false;
 }
 
@@ -110,24 +112,20 @@ bool MqttMsgHandler::handleCoverCommand(const char* payloadStr,
   } else if (strcmp(payloadStr, "STOP") == 0) {
     command = CoverCommand::STOP;
   } else {
-    Serial.print("Error: Unknown cover command: ");
-    Serial.println(payloadStr);
+    logger.printf(Logger::ERR, "Unknown cover command: %s", payloadStr);
     return false;
   }
 
   // Forward command to device via LoRa
   if (loRaMsgHandler->sendServiceCommand(deviceId, entityId,
                                          static_cast<uint8_t>(command))) {
-    Serial.print("Service command sent successfully (device=");
-    Serial.print(deviceId);
-    Serial.print(", entity=");
-    Serial.print(entityId);
-    Serial.print(", command=");
-    Serial.print(payloadStr);
-    Serial.println(")");
+    logger.printf(
+        Logger::INF,
+        "Service command sent successfully (device=%u, entity=%u, command=%s)",
+        deviceId, entityId, payloadStr);
     return true;
   } else {
-    Serial.println("Failed to send service command");
+    logger.println(Logger::ERR, F("Failed to send service command"));
     return false;
   }
 }
@@ -142,14 +140,12 @@ bool MqttMsgHandler::handleNumberCommand(const char* payloadStr,
 
   // Validate parsing
   if (endptr == payloadStr || *endptr != '\0') {
-    Serial.print("Error: Invalid numeric value: ");
-    Serial.println(payloadStr);
+    logger.printf(Logger::ERR, "Invalid numeric value: %s", payloadStr);
     return false;
   }
 
   if (errno == ERANGE) {
-    Serial.print("Error: Float value out of range: ");
-    Serial.println(payloadStr);
+    logger.printf(Logger::ERR, "Float value out of range: %s", payloadStr);
     return false;
   }
 
@@ -159,52 +155,37 @@ bool MqttMsgHandler::handleNumberCommand(const char* payloadStr,
   // Check if raw value is valid for this Format (signedness and size
   // constraints)
   if (!entity->format.isValidRawValue(rawValue)) {
-    Serial.print("Error: Value ");
-    Serial.print(rawValue);
-    Serial.print(" out of Format bounds (");
-    entity->format.print(Serial);
-    Serial.println(")");
+    logger.printf(Logger::ERR, "Value %u out of Format bounds", rawValue);
     return false;
   }
 
   // Check entity's min/max bounds
   if (rawValue < entity->minValue || rawValue > entity->maxValue) {
-    Serial.print("Error: Value ");
-    Serial.print(rawValue);
-    Serial.print(" out of entity range [");
-    Serial.print(entity->minValue);
-    Serial.print(", ");
-    Serial.print(entity->maxValue);
-    Serial.println("]");
+    logger.printf(Logger::ERR, "Value %u out of entity range [%u, %u]",
+                  rawValue, entity->minValue, entity->maxValue);
     return false;
   }
 
   // Forward value to device via LoRa
   if (loRaMsgHandler->sendValueSetRequest(deviceId, entityId, rawValue)) {
-    Serial.print("Value set command sent successfully (device=");
-    Serial.print(deviceId);
-    Serial.print(", entity=");
-    Serial.print(entityId);
-    Serial.print(", mqtt_value=");
-    Serial.print(floatValue, entity->format.getPrecision());
-    Serial.print(", raw_value=");
-    Serial.print(rawValue);
-    Serial.println(")");
+    logger.printf(Logger::INF,
+                  "Value set command sent successfully (device=%u, entity=%u, "
+                  "mqtt_value=%f, raw_value=%u)",
+                  deviceId, entityId, floatValue, rawValue);
     return true;
   } else {
-    Serial.println("Failed to send value set command");
+    logger.println(Logger::ERR, F("Failed to send value set command"));
     return false;
   }
 }
 
 void MqttMsgHandler::handleMessage(const char* topic, const byte* payload,
                                    unsigned int length) {
-  Serial.print("MQTT message received on topic: ");
-  Serial.println(topic);
+  logger.printf(Logger::DBG, "MQTT message received on topic: %s", topic);
 
   // Validate inputs
   if (!topic || length == 0 || !loRaMsgHandler || !deviceRegistry) {
-    Serial.println("Error: Invalid message parameters");
+    logger.println(Logger::ERR, F("Invalid message parameters"));
     return;
   }
 
@@ -216,14 +197,13 @@ void MqttMsgHandler::handleMessage(const char* topic, const byte* payload,
   // Structured topic parsing with full validation
   if (sscanf(topic, "lora-gw/device_%u/entity_%u/%31s", &deviceId, &entityId,
              suffix) != 3) {
-    Serial.println("Error: Invalid topic format");
+    logger.println(Logger::ERR, F("Invalid topic format"));
     return;
   }
 
   // Validate topic suffix
   if (strcmp(suffix, "service") != 0 && strcmp(suffix, "value") != 0) {
-    Serial.print("Error: Invalid topic suffix: ");
-    Serial.println(suffix);
+    logger.printf(Logger::ERR, "Invalid topic suffix: %s", suffix);
     return;
   }
 
@@ -234,7 +214,7 @@ void MqttMsgHandler::handleMessage(const char* topic, const byte* payload,
 
   // Validate payload size
   if (length >= 256) {
-    Serial.println("Error: Payload too large");
+    logger.println(Logger::ERR, F("Payload too large"));
     return;
   }
 
@@ -256,7 +236,8 @@ void MqttMsgHandler::handleMessage(const char* topic, const byte* payload,
 
   // Handle all-whitespace payload
   if (endIdx < startIdx) {
-    Serial.println("Error: Payload is empty after trimming whitespace");
+    logger.println(Logger::ERR,
+                   F("Payload is empty after trimming whitespace"));
     return;
   }
 
@@ -266,28 +247,20 @@ void MqttMsgHandler::handleMessage(const char* topic, const byte* payload,
   }
   payloadStr[endIdx - startIdx + 1] = '\0';
 
-  Serial.print("Payload: ");
-  Serial.println(payloadStr);
+  logger.printf(Logger::DBG, "Payload: %s", payloadStr);
 
   // Look up the entity in the registry
   const EntityInfo* entity = deviceRegistry->getEntity(deviceId, entityId);
   if (!entity) {
-    Serial.print("Error: Entity ");
-    Serial.print(entityId);
-    Serial.print(" not found on device ");
-    Serial.println(deviceId);
+    logger.printf(Logger::WRN, "Entity %u not found on device %u", entityId,
+                  deviceId);
     return;
   }
 
   // Log message acceptance
-  Serial.print("Message accepted: device=");
-  Serial.print(deviceId);
-  Serial.print(", entity=");
-  Serial.print(entityId);
-  Serial.print(", domain=");
-  Serial.print(entity->domain.getName());
-  Serial.print(", payload=");
-  Serial.println(payloadStr);
+  logger.printf(Logger::DBG,
+                "Message accepted: device=%u, entity=%u, domain=%s, payload=%s",
+                deviceId, entityId, entity->domain.getName(), payloadStr);
 
   // Determine entity type and send appropriate command
   if (entity->domain.getDomain() == EntityDomain::Domain::COVER) {
@@ -295,8 +268,8 @@ void MqttMsgHandler::handleMessage(const char* topic, const byte* payload,
   } else if (entity->domain.getDomain() == EntityDomain::Domain::NUMBER) {
     handleNumberCommand(payloadStr, deviceId, entityId, entity);
   } else {
-    Serial.print("Error: Entity type not supported for commands (domain: ");
-    Serial.print(entity->domain.getName());
-    Serial.println(")");
+    logger.printf(Logger::ERR,
+                  "Entity type not supported for commands (domain: %s)",
+                  entity->domain.getName());
   }
 }

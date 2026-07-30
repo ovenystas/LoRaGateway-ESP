@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 
 #include "DeviceRegistry.h"
 #include "LoRaMsgHandler.h"
@@ -11,40 +11,30 @@ class WebServerHandler {
   WebServerHandler(LoRaMsgHandler& loRaMsg, DeviceRegistry& registry,
                    uint16_t port = 80);
 
-  // Initialize and start the webserver
+  // Initialize and start the async webserver and WebSocket.
   bool begin();
 
-  // Handle webserver events (should be called in main loop)
-  void handle();
-
-  // Stop the webserver
+  // Stop the webserver.
   void stop();
 
-  // Route handlers
-  void handleRoot();
-  void handlePing();
-  void handleDiscovery();
-  void handleValueGet();
-  void handleValueSet();
-  void handleGetStatus();
-  void handleNotFound();
-
  private:
-  WebServer server;
+  AsyncWebServer server;
+  AsyncWebSocket ws;
   LoRaMsgHandler& loRaMsg;
   DeviceRegistry& deviceRegistry;
   String lastStatus;
-  bool routesRegistered = false;
+  bool started;
 
-  // HTML page content
-  static const char* getHtmlPage();
+  // WebSocket event handler
+  void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client,
+                 AwsEventType type, void* arg, uint8_t* data, size_t len);
 
-  String getContentType(String filename);
+  // Send initial state (settings + log history) to a newly connected client
+  void sendInitToClient(AsyncWebSocketClient* client);
 
-  bool exists(String path);
+  // Handle incoming WebSocket commands from clients
+  void handleWsMessage(AsyncWebSocketClient* client, const String& message);
 
-  bool handleFileRead(String path);
-
-  // Helper to URL decode
+  // URL decode helper
   static String urlDecode(const String& input);
 };

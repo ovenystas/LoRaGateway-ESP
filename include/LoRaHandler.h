@@ -28,8 +28,8 @@ class LoRaHandler {
   static bool decodeMessage(const uint8_t* buffer, uint8_t len,
                             LoRaRxMessage& msg);
 
-  static void printMessage(const LoRaTxMessage& msg);
-  static void printMessage(const LoRaRxMessage& msg);
+  static void printMessage(Print& p, const LoRaTxMessage& msg);
+  static void printMessage(Print& p, const LoRaRxMessage& msg);
 
  private:
   const int csPin;
@@ -41,7 +41,7 @@ class LoRaHandler {
   bool readPacket(LoRaRxMessage& msg);
 
   // Helper to print message payload (shared by both Tx and Rx formatters)
-  static void printMessagePayload(const LoRaHeader& header,
+  static void printMessagePayload(Print& p, const LoRaHeader& header,
                                   const uint8_t* payload, uint8_t payloadLength,
                                   bool ackResponse);
 };

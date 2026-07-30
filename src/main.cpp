@@ -8,6 +8,7 @@
 #include "DeviceRegistry.h"
 #include "LoRaHandler.h"
 #include "LoRaMsgHandler.h"
+#include "Logger.h"
 #include "MqttHandler.h"
 #include "MqttMsgHandler.h"
 #include "Types.h"
@@ -85,8 +86,6 @@ void setup() {
   setupSpiffs();
 
   // LoRa setup and set message callback
-  loRaMsg.setOnDiscoveryMessage(onDiscoveryMessage);
-  loRaMsg.setOnValueMessage(onValueMessage);
   setupLoRa();
 
   // WiFi setup (kick off the non-blocking connection state machine)
@@ -104,7 +103,8 @@ void setup() {
   }
 
   // Send initial discovery request to all devices
-  Serial.println(F("Sending initial discovery request to all devices..."));
+  logger.println(Logger::INF,
+                 F("Sending initial discovery request to all devices..."));
   loRaMsg.sendDiscoveryRequest(LoRaMsgHandler::LORA_BROADCAST_ADDRESS);
 }
 
@@ -125,7 +125,6 @@ void loop() {
     ArduinoOTA.handle();
   }
 
-  // Handle MQTT reconnection
   if (WiFi.status() == WL_CONNECTED) {
     if (!mqtt.isConnected()) {
       setupMqtt();
@@ -143,9 +142,9 @@ void loop() {
       for (uint8_t i = 0; i < deviceCount; i++) {
         if (currentTime - devices[i]->lastSeen >
             (NODE_TIMEOUT_SECONDS * 1000)) {
-          Serial.print(F("Device "));
-          Serial.print(devices[i]->deviceId);
-          Serial.println(F(" has timed out - removing from registry"));
+          logger.printf(Logger::INF,
+                        "Device %u has timed out - removing from registry",
+                        devices[i]->deviceId);
           deviceRegistry.unregisterDevice(devices[i]->deviceId);
         }
       }
@@ -153,15 +152,11 @@ void loop() {
   }
 
 #if 0
-  // Send ping request to device with address 1 every 3 seconds
   if (currentTime - lastPingTime >= PING_INTERVAL) {
     lastPingTime = currentTime;
-
     const uint8_t targetDeviceId = 1;
     loRaMsg.sendPingRequest(targetDeviceId);
-
-    Serial.print(F("Sent ping request to Device "));
-    Serial.println(targetDeviceId);
+    logger.printf(Logger::INF, "Sent ping request to Device %u", targetDeviceId);
   }
 #endif
 
@@ -171,25 +166,12 @@ void loop() {
   // Process MQTT events
   mqtt.handle();
 
-  // Process WebServer events
-  webServer.handle();
-
   delay(10);  // Small delay to prevent watchdog timeout
 }
 
-static void printVersion(uint8_t major, uint8_t minor, uint8_t patch) {
-  Serial.print(major);
-  Serial.print('.');
-  Serial.print(minor);
-  Serial.print('.');
-  Serial.print(patch);
-}
-
 static void printWelcomeMessage(void) {
-  Serial.print(F("\n\nLoRa Gateway Device v"));
-  printVersion(VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
-  Serial.print(F(", Address="));
-  Serial.println(LORA_MY_ADDRESS);
+  logger.printf(Logger::INF, "\n\nLoRa Gateway Device v%u.%u.%u, Address=%u",
+                VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, LORA_MY_ADDRESS);
 }
 
 // Number of retries before giving up and restarting the device. A hard
@@ -201,15 +183,15 @@ static const uint8_t INIT_MAX_ATTEMPTS = 5;
 static const unsigned long INIT_RETRY_DELAY_MS = 1000;
 
 static void setupSpiffs() {
-  Serial.print(F("Initializing SPIFFS."));
+  logger.print(Logger::INF, F("Initializing SPIFFS."));
 
   uint8_t attempts = 0;
   while (!SPIFFS.begin(true)) {
     attempts++;
-    Serial.print('.');
+    logger.print(Logger::INF, '.');
 
     if (attempts >= INIT_MAX_ATTEMPTS) {
-      Serial.println(F(" Failed! Restarting device..."));
+      logger.println(Logger::ERR, F(" Failed! Restarting device..."));
       delay(INIT_RETRY_DELAY_MS);
       ESP.restart();
     }
@@ -217,19 +199,19 @@ static void setupSpiffs() {
     delay(INIT_RETRY_DELAY_MS);
   }
 
-  Serial.println(F(" OK."));
+  logger.println(Logger::INF, F(" OK."));
 }
 
 static void setupLoRa() {
-  Serial.print(F("Initializing LoRa."));
+  logger.print(Logger::INF, F("Initializing LoRa."));
 
   uint8_t attempts = 0;
   while (!loRa.begin(LORA_FREQUENCY)) {
     attempts++;
-    Serial.print('.');
+    logger.print(Logger::INF, '.');
 
     if (attempts >= INIT_MAX_ATTEMPTS) {
-      Serial.println(F(" Failed! Restarting device..."));
+      logger.println(Logger::ERR, F(" Failed! Restarting device..."));
       delay(INIT_RETRY_DELAY_MS);
       ESP.restart();
     }
@@ -237,7 +219,7 @@ static void setupLoRa() {
     delay(INIT_RETRY_DELAY_MS);
   }
 
-  Serial.println(F(" OK."));
+  logger.println(Logger::INF, F(" OK."));
 }
 
 // Sets up ArduinoOTA so firmware can be uploaded over WiFi using
@@ -259,25 +241,33 @@ static void setupOta() {
       .onStart([]() {
         String type =
             (ArduinoOTA.getCommand() == U_FLASH) ? "sketch" : "filesystem";
-        Serial.print(F("OTA: Start updating "));
-        Serial.println(type);
+        logger.printf(Logger::INF, "OTA: Start updating %s", type.c_str());
       })
-      .onEnd([]() { Serial.println(F("\nOTA: Update complete, rebooting.")); })
+      .onEnd([]() {
+        logger.println(Logger::INF, F("OTA: Update complete, rebooting."));
+      })
       .onProgress([](unsigned int progress, unsigned int total) {
-        Serial.printf("OTA: Progress %u%%\r", (progress / (total / 100)));
+        logger.printf(Logger::DBG, "OTA: Progress %u%%\r",
+                      (progress / (total / 100)));
       })
       .onError([](ota_error_t error) {
-        Serial.printf("OTA: Error[%u]: ", error);
-        if (error == OTA_AUTH_ERROR) {
-          Serial.println(F("Auth Failed"));
-        } else if (error == OTA_BEGIN_ERROR) {
-          Serial.println(F("Begin Failed"));
-        } else if (error == OTA_CONNECT_ERROR) {
-          Serial.println(F("Connect Failed"));
-        } else if (error == OTA_RECEIVE_ERROR) {
-          Serial.println(F("Receive Failed"));
-        } else if (error == OTA_END_ERROR) {
-          Serial.println(F("End Failed"));
+        logger.printf(Logger::ERR, "OTA: Error[%u]: ", error);
+        switch (error) {
+          case OTA_AUTH_ERROR:
+            logger.println(Logger::ERR, F("Auth Failed"));
+            break;
+          case OTA_BEGIN_ERROR:
+            logger.println(Logger::ERR, F("Begin Failed"));
+            break;
+          case OTA_CONNECT_ERROR:
+            logger.println(Logger::ERR, F("Connect Failed"));
+            break;
+          case OTA_RECEIVE_ERROR:
+            logger.println(Logger::ERR, F("Receive Failed"));
+            break;
+          case OTA_END_ERROR:
+            logger.println(Logger::ERR, F("End Failed"));
+            break;
         }
       });
 
@@ -285,16 +275,13 @@ static void setupOta() {
 
   otaStarted = true;
 
-  Serial.print(F("OTA ready. Hostname: "));
-  Serial.print(OTA_HOSTNAME);
-  Serial.println(F(".local"));
+  logger.printf(Logger::INF, "OTA ready. Hostname: %s.local", OTA_HOSTNAME);
 }
 
 // Non-blocking WiFi connect/reconnect handler. This is a simple state
 // machine driven by millis() so it never blocks the LoRa/MQTT/WebServer
 // processing in loop():
 //
-
 //   NEED_CONNECT -> kick off WiFi.begin(), move to CONNECTING
 //   CONNECTING   -> poll WiFi.status() every WIFI_POLL_INTERVAL ms;
 //                   on success move to CONNECTED, on too many failed
@@ -307,9 +294,7 @@ static void handleWiFi() {
 
   switch (wifiState) {
     case WiFiState::NEED_CONNECT: {
-      Serial.print(F("Connecting to WiFi SSID "));
-      Serial.print(WIFI_SSID);
-      Serial.print('.');
+      logger.printf(Logger::INF, "Connecting to WiFi SSID %s.", WIFI_SSID);
 
       WiFi.mode(WIFI_STA);
       WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -322,9 +307,8 @@ static void handleWiFi() {
 
     case WiFiState::CONNECTING: {
       if (WiFi.status() == WL_CONNECTED) {
-        Serial.print(F(" Connected. IP address="));
-        Serial.print(WiFi.localIP());
-        Serial.println('.');
+        logger.printf(Logger::INF, " Connected. IP address=%s",
+                      WiFi.localIP().toString().c_str());
         wifiState = WiFiState::CONNECTED;
         break;
       }
@@ -332,10 +316,10 @@ static void handleWiFi() {
       if (now - wifiLastActionTime >= WIFI_POLL_INTERVAL) {
         wifiLastActionTime = now;
         wifiConnectAttempts++;
-        Serial.print('.');
+        logger.print(Logger::INF, '.');
 
         if (wifiConnectAttempts >= WIFI_MAX_POLL_ATTEMPTS) {
-          Serial.println(F(" Failed! Will retry after backoff."));
+          logger.println(Logger::WRN, F(" Failed! Will retry after backoff."));
           wifiLastActionTime = now;
           wifiState = WiFiState::BACKOFF;
         }
@@ -345,7 +329,8 @@ static void handleWiFi() {
 
     case WiFiState::CONNECTED: {
       if (WiFi.status() != WL_CONNECTED) {
-        Serial.println(F("WiFi disconnected, attempting to reconnect..."));
+        logger.println(Logger::WRN,
+                       F("WiFi disconnected, attempting to reconnect..."));
         wifiState = WiFiState::NEED_CONNECT;
       }
       break;
@@ -361,25 +346,18 @@ static void handleWiFi() {
 }
 
 static void setupMqtt() {
-  Serial.print(F("Connecting to MQTT broker at "));
-  Serial.print(MQTT_BROKER);
-  Serial.print(':');
-  Serial.print(MQTT_PORT);
-  Serial.print('.');
+  logger.printf(Logger::INF, "Connecting to MQTT broker at %s:%u.", MQTT_BROKER,
+                MQTT_PORT);
 
   if (mqtt.connect(MQTT_BROKER, MQTT_PORT, MQTT_CLIENT_ID, MQTT_USERNAME,
                    MQTT_PASSWORD)) {
-    Serial.println(F(" Connected."));
+    logger.println(Logger::INF, F(" Connected."));
 
-    // Resubscribe to all entity command topics for entities that can receive
-    // commands
     uint8_t deviceCount = 0;
     DeviceInfo** devices = deviceRegistry.getAllDevices(deviceCount);
     if (devices) {
       for (uint8_t i = 0; i < deviceCount; i++) {
         for (uint8_t j = 0; j < devices[i]->entityCount; j++) {
-          // Only subscribe to command topics for entities that can receive
-          // commands
           const EntityDomain::Domain domain =
               devices[i]->entities[j].domain.getDomain();
           if (domain == EntityDomain::Domain::COVER ||
@@ -391,28 +369,25 @@ static void setupMqtt() {
       }
     }
   } else {
-    Serial.println(F(" Failed!"));
+    logger.println(Logger::ERR, F(" Failed!"));
   }
 }
 
 static void onDiscoveryMessage(uint8_t deviceId,
                                const DiscoveryItem& discovery) {
-  Serial.print(F("New entity discovered on Device "));
-  Serial.print(deviceId);
-  Serial.print(F("! Entity ID: "));
-  Serial.println(discovery.entityId);
+  logger.printf(Logger::INF,
+                "New entity discovered on Device %u! Entity ID: %u", deviceId,
+                discovery.entityId);
 
-  // Register the device
   String deviceName = String("LoRa Device ") + deviceId;
   if (!deviceRegistry.registerDevice(deviceId, deviceName.c_str())) {
-    Serial.println(F("Failed to register device!"));
+    logger.println(Logger::ERR, F("Failed to register device!"));
     return;
   }
   deviceRegistry.updateDeviceLastSeen(deviceId);
-  Serial.println("Device registered: " + deviceName);
-  deviceRegistry.getDevice(deviceId)->print(Serial, 2);
+  logger.printf(Logger::INF, "Device registered: %s", deviceName.c_str());
+  deviceRegistry.getDevice(deviceId)->print(logger, 2);
 
-  // Register the entity
   EntityInfo entity;
   entity.deviceId = deviceId;
   entity.entityId = discovery.entityId;
@@ -426,33 +401,27 @@ static void onDiscoveryMessage(uint8_t deviceId,
   entity.name = discovery.name;
 
   if (deviceRegistry.registerEntity(deviceId, entity)) {
-    Serial.print(F("Entity registered: "));
-    Serial.println(entity.name);
-    entity.print(Serial, 2);
+    logger.printf(Logger::INF, "Entity registered: %s", entity.name.c_str());
+    entity.print(logger, 2);
 
-    // Subscribe to command topic for entities that can receive commands (e.g.,
-    // covers and numbers)
     if (mqtt.isConnected()) {
       const EntityDomain::Domain domain = entity.domain.getDomain();
       if (domain == EntityDomain::Domain::COVER ||
           domain == EntityDomain::Domain::NUMBER) {
         mqtt.subscribeToCommands(deviceId, discovery.entityId, domain);
-        Serial.print(F("Subscribed to command topic for Entity "));
-        Serial.println(discovery.entityId);
+        logger.printf(Logger::INF, "Subscribed to command topic for Entity %u",
+                      discovery.entityId);
       }
     }
 
-    // Publish Home Assistant discovery for this entity
-    Serial.println(F("Publishing Home Assistant discovery..."));
+    logger.println(Logger::INF, F("Publishing Home Assistant discovery..."));
     publishDeviceDiscovery(deviceId, discovery);
   }
 }
 
 static void onValueMessage(uint8_t deviceId,
                            const std::vector<ValueItem>& valueItems) {
-  Serial.print(F("Value message from Device "));
-  Serial.print(deviceId);
-  Serial.println(':');
+  logger.printf(Logger::INF, "Value message from Device %u:", deviceId);
 
   deviceRegistry.updateDeviceLastSeen(deviceId);
 
@@ -461,22 +430,18 @@ static void onValueMessage(uint8_t deviceId,
   for (const ValueItem& valueItem : valueItems) {
     EntityInfo* entity = device->getEntity(valueItem.entityId);
     if (entity) {
-      Serial.print(F("    Value for entity "));
-      Serial.print(entity->name);
-      Serial.print(": ");
       float scaledValue = entity->format.fromRawValue(valueItem.value);
-      Serial.print(scaledValue, entity->format.getPrecision());
-      Serial.print(' ');
-      Serial.println(entity->unit.getName());
+      logger.printf(Logger::DBG, "    Value for entity %s: %f %s",
+                    entity->name.c_str(), scaledValue, entity->unit.getName());
     } else {
-      Serial.println(F("    Entity not found, sending discovery request"));
+      logger.println(Logger::WRN,
+                     F("    Entity not found, sending discovery request"));
       loRaMsg.sendDiscoveryRequest(deviceId, valueItem.entityId);
     }
   }
 
-  // Forward sensor values to MQTT
   mqtt.publishSensorValues(*device, valueItems);
-  Serial.println(F("    Published sensor values"));
+  logger.println(Logger::DBG, F("    Published sensor values"));
 }
 
 static void sendMqttCommandToDevice(uint8_t deviceId, uint8_t entityId,
@@ -484,25 +449,20 @@ static void sendMqttCommandToDevice(uint8_t deviceId, uint8_t entityId,
   LoRaTxMessage cmdMsg;
   cmdMsg.header = LoRaHeader(deviceId, 0, 0, LoRaMsgType::valueSet_req);
 
-  // Create a simple command payload with the value
   cmdMsg.payloadLength = 0;
-  cmdMsg.payload[cmdMsg.payloadLength++] = entityId;  // Target entity
+  cmdMsg.payload[cmdMsg.payloadLength++] = entityId;
 
-  // Add the value (4 bytes big-endian)
   cmdMsg.payload[cmdMsg.payloadLength++] = (value >> 24) & 0xFF;
   cmdMsg.payload[cmdMsg.payloadLength++] = (value >> 16) & 0xFF;
   cmdMsg.payload[cmdMsg.payloadLength++] = (value >> 8) & 0xFF;
   cmdMsg.payload[cmdMsg.payloadLength++] = value & 0xFF;
 
   if (loRa.sendMessage(cmdMsg)) {
-    Serial.print(F("Command sent to Device "));
-    Serial.print(deviceId);
-    Serial.print(F(", Entity "));
-    Serial.print(entityId);
-    Serial.print(F(", Value: "));
-    Serial.println(value);
+    logger.printf(Logger::INF,
+                  "Command sent to Device %u, Entity %u, Value: %d", deviceId,
+                  entityId, value);
   } else {
-    Serial.println(F("Failed to send command!"));
+    logger.println(Logger::ERR, F("Failed to send command!"));
   }
 }
 
@@ -511,13 +471,14 @@ static void publishDeviceDiscovery(uint8_t deviceId,
   EntityInfo* entity = deviceRegistry.getEntity(deviceId, discovery.entityId);
   if (entity) {
     if (mqtt.publishDiscovery(*entity, MQTT_CLIENT_ID)) {
-      Serial.print(F("Published Home Assistant discovery for entity "));
-      Serial.println(entity->name);
+      logger.printf(Logger::INF,
+                    "Published Home Assistant discovery for entity %s",
+                    entity->name.c_str());
     } else {
-      Serial.println(F("Failed to publish discovery!"));
+      logger.println(Logger::ERR, F("Failed to publish discovery!"));
     }
   } else {
-    Serial.println(
-        F("WRN: Entity not found in registry, cannot publish discovery"));
+    logger.println(Logger::WRN,
+                   F("Entity not found in registry, cannot publish discovery"));
   }
 }

@@ -4,6 +4,7 @@
 
 #include <cstring>
 
+#include "Logger.h"
 #include "Util.h"
 
 LoRaHandler::LoRaHandler(int csPin, int rstPin, int dioPin)
@@ -31,9 +32,9 @@ bool LoRaHandler::sendMessage(const LoRaTxMessage& msg) {
     return false;
   }
 
-  Serial.print("\nSending LoRa message, raw: ");
-  printMessage(msg);
-  Serial.println();
+  logger.print(Logger::DBG, F("Sending LoRa message, raw: "));
+  printMessage(logger, msg);
+  logger.println(Logger::DBG);
 
   LoRa.beginPacket();
   LoRa.write(buffer, len);
@@ -52,9 +53,9 @@ void LoRaHandler::handle() {
   if (packetSize > 0) {
     LoRaRxMessage msg;
     if (readPacket(msg)) {
-      Serial.print("\nLoRa message received, raw: ");
-      printMessage(msg);
-      Serial.println();
+      logger.print(Logger::DBG, F("LoRa message received, raw: "));
+      printMessage(logger, msg);
+      logger.println(Logger::DBG);
 
       if (onMessageReceived) {
         onMessageReceived(msg);
@@ -142,30 +143,30 @@ bool LoRaHandler::decodeMessage(const uint8_t* buffer, uint8_t len,
   return true;
 }
 
-void LoRaHandler::printMessage(const LoRaTxMessage& msg) {
-  printMessagePayload(msg.header, msg.payload, msg.payloadLength,
+void LoRaHandler::printMessage(Print& p, const LoRaTxMessage& msg) {
+  printMessagePayload(p, msg.header, msg.payload, msg.payloadLength,
                       msg.header.flags.ack_response);
 }
 
-void LoRaHandler::printMessage(const LoRaRxMessage& msg) {
-  printMessagePayload(msg.header, msg.payload, msg.payloadLength,
+void LoRaHandler::printMessage(Print& p, const LoRaRxMessage& msg) {
+  printMessagePayload(p, msg.header, msg.payload, msg.payloadLength,
                       msg.header.flags.ack_response);
 }
 
-void LoRaHandler::printMessagePayload(const LoRaHeader& header,
+void LoRaHandler::printMessagePayload(Print& p, const LoRaHeader& header,
                                       const uint8_t* payload,
                                       uint8_t payloadLength, bool ackResponse) {
-  Serial.print(F("H: "));
+  p.print(F("H: "));
   uint8_t buf[LORA_HEADER_LENGTH];
   header.toByteArray(buf);
-  printArray(Serial, buf, LORA_HEADER_LENGTH, HEX);
+  printArray(p, buf, LORA_HEADER_LENGTH, HEX);
 
-  Serial.print(F(" P: "));
+  p.print(F(" P: "));
   if (payloadLength == 0) {
-    Serial.print(F("--"));
-  } else if (ackResponse and payloadLength == 1 and payload[0] == '!') {
-    Serial.print(F("(ACK)"));
+    p.print(F("--"));
+  } else if (ackResponse && payloadLength == 1 && payload[0] == '!') {
+    p.print(F("(ACK)"));
   } else {
-    printArray(Serial, payload, payloadLength, HEX);
+    printArray(p, payload, payloadLength, HEX);
   }
 }

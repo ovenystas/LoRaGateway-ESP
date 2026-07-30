@@ -3,13 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LoRa Gateway Control</title>
+    <title>LoRa Gateway</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -24,151 +20,88 @@
             border-radius: 10px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
             padding: 40px;
-            max-width: 600px;
+            max-width: 700px;
             width: 100%;
         }
-        h1 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 28px;
+        h1 { color: #333; margin-bottom: 10px; font-size: 28px; }
+        .subtitle { color: #666; margin-bottom: 30px; font-size: 14px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 6px; color: #333; font-weight: 500; font-size: 13px; }
+        input[type="text"], input[type="number"], select {
+            width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px;
+            font-size: 14px; transition: border-color 0.3s;
         }
-        .subtitle {
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 14px;
+        input[type="text"]:focus, input[type="number"]:focus, select:focus {
+            outline: none; border-color: #667eea;
         }
-        .form-group {
-            margin-bottom: 25px;
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #333;
-            font-weight: 500;
-            font-size: 14px;
-        }
-        input[type="text"],
-        input[type="number"],
-        select {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
-            font-size: 14px;
-            transition: border-color 0.3s;
-        }
-        input[type="text"]:focus,
-        input[type="number"]:focus,
-        select:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        .button-group {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-top: 30px;
-        }
+        .button-group { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 25px; }
         button {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 6px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            padding: 10px 20px; border: none; border-radius: 6px; font-size: 14px;
+            font-weight: 600; cursor: pointer; transition: all 0.3s; text-transform: uppercase; letter-spacing: 0.5px;
         }
-        .btn-ping {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-        .btn-value-get {
-            background: linear-gradient(135deg, #66e6ea 0%, #4b67a2 100%);
-            color: white;
-        }
-        .btn-value-set {
-            background: linear-gradient(135deg, #66e6ea 0%, #4b67a2 100%);
-            color: white;
-        }
-        .btn-ping:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
-        }
-        .btn-ping:active {
-            transform: translateY(0);
-        }
-        .btn-discovery {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            color: white;
-        }
-        .btn-discovery:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(245, 87, 108, 0.4);
-        }
-        .btn-discovery:active {
-            transform: translateY(0);
-        }
-        .btn-value-get:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
-        }
-        .btn-value-get:active {
-            transform: translateY(0);
-        }
-        .btn-value-set:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
-        }
-        .btn-value-set:active {
-            transform: translateY(0);
-        }
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
+        .btn-ping { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .btn-value-get { background: linear-gradient(135deg, #66e6ea 0%, #4b67a2 100%); color: white; }
+        .btn-value-set { background: linear-gradient(135deg, #66e6ea 0%, #4b67a2 100%); color: white; }
+        .btn-ping:hover, .btn-value-get:hover, .btn-value-set:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4); }
+        .btn-ping:active, .btn-value-get:active, .btn-value-set:active { transform: translateY(0); }
+        .btn-discovery { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
+        .btn-discovery:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(245, 87, 108, 0.4); }
+        .btn-discovery:active { transform: translateY(0); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         .status-message {
-            margin-top: 30px;
-            padding: 15px;
-            border-radius: 6px;
-            display: none;
-            font-size: 14px;
-            font-weight: 500;
+            margin-top: 25px; padding: 12px; border-radius: 6px; display: none; font-size: 13px; font-weight: 500;
         }
-        .status-message.show {
-            display: block;
-        }
-        .status-message.success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        .status-message.error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
+        .status-message.show { display: block; }
+        .status-message.success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status-message.error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         .spinner {
-            display: inline-block;
-            width: 14px;
-            height: 14px;
-            border: 2px solid rgba(0, 0, 0, 0.1);
-            border-radius: 50%;
-            border-top-color: #667eea;
-            animation: spin 0.6s linear infinite;
-            margin-right: 8px;
-            vertical-align: middle;
+            display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%; border-top-color: #667eea; animation: spin 0.6s linear infinite;
+            margin-right: 8px; vertical-align: middle;
         }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Log Controls */
+        .log-controls {
+            margin-top: 30px; padding: 15px; background: #f5f7ff; border-radius: 8px;
+            display: flex; align-items: center; gap: 15px; flex-wrap: wrap;
         }
+        .toggle-label { font-weight: 600; font-size: 13px; color: #333; display: flex; align-items: center; gap: 8px; }
+        .toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #ccc; transition: 0.4s; border-radius: 24px;
+        }
+        .toggle-slider:before {
+            position: absolute; content: ""; height: 18px; width: 18px;
+            left: 3px; bottom: 3px; background-color: white; transition: 0.4s; border-radius: 50%;
+        }
+        input:checked + .toggle-slider { background-color: #667eea; }
+        input:checked + .toggle-slider:before { transform: translateX(20px); }
+        .log-level-select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+
+        /* Log Window */
+        .log-window {
+            margin-top: 15px; background: #1e1e2e; border-radius: 8px;
+            max-height: 350px; overflow-y: auto; padding: 12px;
+            font-family: 'Courier New', Courier, monospace; font-size: 12px; line-height: 1.6;
+        }
+        .log-window::-webkit-scrollbar { width: 6px; }
+        .log-window::-webkit-scrollbar-track { background: #2a2a3a; border-radius: 3px; }
+        .log-window::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+        .log-entry { padding: 1px 0; white-space: pre-wrap; word-break: break-all; }
+        .log-entry .ts { color: #6c7086; margin-right: 8px; }
+        .log-entry.err { color: #f38ba8; }
+        .log-entry.wrn { color: #fab387; }
+        .log-entry.inf { color: #89dceb; }
+        .log-entry.dbg { color: #a6adc8; }
+        .log-empty { color: #585b70; text-align: center; padding: 20px; font-style: italic; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>LoRa Gateway Control</h1>
+        <h1>LoRa Gateway</h1>
         <p class="subtitle">Send commands to LoRa devices</p>
 
         <form id="commandForm">
@@ -196,22 +129,192 @@
         </form>
 
         <div id="statusMessage" class="status-message"></div>
+
+        <!-- Log Controls -->
+        <div class="log-controls">
+            <label class="toggle-label">
+                <span>Web Logging</span>
+                <span class="toggle-switch">
+                    <input type="checkbox" id="webLogToggle" onchange="toggleWebLog()">
+                    <span class="toggle-slider"></span>
+                </span>
+            </label>
+            <select class="log-level-select" id="logLevelSelect" onchange="setLogLevel()">
+                <option value="0">ERROR</option>
+                <option value="1">WARNING</option>
+                <option value="2" selected>INFO</option>
+                <option value="3">DEBUG</option>
+            </select>
+            <button id="clearLogBtn" style="padding:6px 12px;font-size:12px;background:#555;color:#fff;border-radius:4px;border:none;cursor:pointer;" onclick="clearLog()">Clear</button>
+        </div>
+
+        <!-- Log Window -->
+        <div class="log-window" id="logWindow">
+            <div class="log-empty">Waiting for log messages...</div>
+        </div>
     </div>
 
     <script>
-        const statusMsg = document.getElementById('statusMessage');
-        const pingBtn = document.getElementById('pingBtn');
-        const discoveryBtn = document.getElementById('discoveryBtn');
-        const valueGetBtn = document.getElementById('valueGetBtn');
-        const valueSetBtn = document.getElementById('valueSetBtn');
-        const deviceIdInput = document.getElementById('deviceId');
-        const entityIdInput = document.getElementById('entityId');
-        const valueInput = document.getElementById('value');
+        // === WebSocket ===
+        let ws = null;
+        let autoScroll = true;
 
-        function showStatus(message, isSuccess, isLoading = false) {
+        function connectWs() {
+            var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            var wsUrl = protocol + '//' + location.host + '/ws';
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function() {
+                console.log('WebSocket connected');
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    var msg = JSON.parse(event.data);
+                    if (msg.type === 'init') {
+                        // Apply initial settings from server
+                        document.getElementById('webLogToggle').checked = msg.webEnabled;
+                        document.getElementById('logLevelSelect').value = ['ERR','WRN','INF','DBG'].indexOf(msg.level);
+                    } else if (msg.type === 'log') {
+                        appendLogEntry(msg.level, msg.timestamp, msg.message, msg.msgId);
+                    } else if (msg.type === 'logSettings') {
+                        document.getElementById('webLogToggle').checked = msg.webEnabled;
+                        document.getElementById('logLevelSelect').value = ['ERR','WRN','INF','DBG'].indexOf(msg.level);
+                    }
+                } catch(e) {
+                    console.error('WebSocket message parse error:', e);
+                }
+            };
+
+            ws.onclose = function() {
+                console.log('WebSocket disconnected, reconnecting in 3s...');
+                setTimeout(connectWs, 3000);
+            };
+
+            ws.onerror = function(err) {
+                console.error('WebSocket error:', err);
+            };
+        }
+
+        function sendWsMessage(obj) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(obj));
+            }
+        }
+
+        function toggleWebLog() {
+            var enabled = document.getElementById('webLogToggle').checked;
+            sendWsMessage({type: 'toggleWebLog', enabled: enabled});
+        }
+
+        function setLogLevel() {
+            var level = parseInt(document.getElementById('logLevelSelect').value);
+            sendWsMessage({type: 'setLogLevel', level: level});
+        }
+
+        // === Log Window ===
+        var logWindow = document.getElementById('logWindow');
+        var logEmptyDiv = logWindow.querySelector('.log-empty');
+
+        logWindow.addEventListener('scroll', function() {
+            autoScroll = (logWindow.scrollTop + logWindow.clientHeight >= logWindow.scrollHeight - 5);
+        });
+
+        function clearLog() {
+            logWindow.innerHTML = '<div class="log-empty">Log cleared</div>';
+            logEmptyDiv = logWindow.querySelector('.log-empty');
+        }
+
+        // Messages that should update in-place on a single line (prefix match).
+        // Multiple prefixes can be added here in the future.
+        var INPLACE_PREFIXES = ['OTA: Progress '];
+
+        function appendLogEntry(level, timestamp, message, msgId) {
+            if (logEmptyDiv) {
+                logEmptyDiv.remove();
+                logEmptyDiv = null;
+            }
+
+            // Check if this message should replace a previous entry in-place
+            var inplacePrefix = null;
+            for (var i = 0; i < INPLACE_PREFIXES.length; i++) {
+                if (message.indexOf(INPLACE_PREFIXES[i]) === 0) {
+                    inplacePrefix = INPLACE_PREFIXES[i];
+                    break;
+                }
+            }
+
+            if (inplacePrefix) {
+                // Search backwards from last child for an entry with the same prefix
+                for (var k = logWindow.children.length - 1; k >= 0; k--) {
+                    var child = logWindow.children[k];
+                    if (!child.classList.contains('log-entry')) continue;
+                    var txtNode = child.lastChild;
+                    if (txtNode && txtNode.nodeType === Node.TEXT_NODE && txtNode.textContent.indexOf(inplacePrefix) === 1) {
+                        // Update timestamp
+                        var ts = child.querySelector('.ts');
+                        if (ts) {
+                            var d = new Date();
+                            var h = d.getHours().toString().padStart(2,'0');
+                            var m = d.getMinutes().toString().padStart(2,'0');
+                            var s = d.getSeconds().toString().padStart(2,'0');
+                            var ms = d.getMilliseconds().toString().padStart(3,'0');
+                            ts.textContent = '[' + h + ':' + m + ':' + s + '.' + ms + ']';
+                        }
+                        // Update message text
+                        txtNode.textContent = ' ' + message;
+                        if (autoScroll) {
+                            requestAnimationFrame(function() {
+                                logWindow.scrollTop = logWindow.scrollHeight;
+                            });
+                        }
+                        return;
+                    }
+                }
+            }
+
+            var cls = 'inf';
+            if (level === 'ERR') cls = 'err';
+            else if (level === 'WRN') cls = 'wrn';
+            else if (level === 'INF') cls = 'inf';
+            else if (level === 'DBG') cls = 'dbg';
+
+            var div = document.createElement('div');
+            div.className = 'log-entry ' + cls;
+
+            var ts = document.createElement('span');
+            ts.className = 'ts';
+            var d = new Date();
+            var h = d.getHours().toString().padStart(2,'0');
+            var m = d.getMinutes().toString().padStart(2,'0');
+            var s = d.getSeconds().toString().padStart(2,'0');
+            var ms = d.getMilliseconds().toString().padStart(3,'0');
+            ts.textContent = '[' + h + ':' + m + ':' + s + '.' + ms + ']';
+
+            var txt = document.createTextNode(' ' + message);
+            div.appendChild(ts);
+            div.appendChild(txt);
+            logWindow.appendChild(div);
+
+            // Limit visible entries to 500
+            while (logWindow.children.length > 500) {
+                logWindow.removeChild(logWindow.firstChild);
+            }
+
+            if (autoScroll) {
+                requestAnimationFrame(function() {
+                    logWindow.scrollTop = logWindow.scrollHeight;
+                });
+            }
+        }
+
+        // === REST API functions ===
+        var statusMsg = document.getElementById('statusMessage');
+
+        function showStatus(message, isSuccess, isLoading) {
             statusMsg.textContent = '';
             if (isLoading) {
-                const spinner = document.createElement('span');
+                var spinner = document.createElement('span');
                 spinner.className = 'spinner';
                 statusMsg.appendChild(spinner);
                 statusMsg.appendChild(document.createTextNode(message));
@@ -222,182 +325,88 @@
         }
 
         function setButtonsDisabled(disabled) {
-            pingBtn.disabled = disabled;
-            discoveryBtn.disabled = disabled;
-            valueGetBtn.disabled = disabled;
-            valueSetBtn.disabled = disabled;
-            deviceIdInput.disabled = disabled;
-            entityIdInput.disabled = disabled;
+            document.getElementById('pingBtn').disabled = disabled;
+            document.getElementById('discoveryBtn').disabled = disabled;
+            document.getElementById('valueGetBtn').disabled = disabled;
+            document.getElementById('valueSetBtn').disabled = disabled;
+            document.getElementById('deviceId').disabled = disabled;
+            document.getElementById('entityId').disabled = disabled;
         }
 
         async function sendPing() {
-            const deviceId = document.getElementById('deviceId').value;
-            if (!deviceId) {
-                showStatus('Please enter a device ID', false);
-                return;
-            }
-
+            var deviceId = document.getElementById('deviceId').value;
+            if (!deviceId) { showStatus('Please enter a device ID', false); return; }
             setButtonsDisabled(true);
             showStatus('Sending ping request...', true, true);
-
             try {
-                const response = await fetch('/ping', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: 'deviceId=' + encodeURIComponent(deviceId)
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    showStatus('✓ Ping sent to device ' + deviceId, true);
-                } else {
-                    showStatus('✗ Failed to send ping: ' + (data.error || 'Unknown error'), false);
-                }
-            } catch (error) {
-                showStatus('✗ Network error: ' + error.message, false);
-            } finally {
-                setButtonsDisabled(false);
-            }
+                var response = await fetch('/ping', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'deviceId=' + encodeURIComponent(deviceId) });
+                var data = await response.json();
+                if (response.ok && data.success) showStatus('\u2713 Ping sent to device ' + deviceId, true);
+                else showStatus('\u2717 Failed to send ping: ' + (data.error || 'Unknown error'), false);
+            } catch(e) { showStatus('\u2717 Network error: ' + e.message, false); }
+            finally { setButtonsDisabled(false); }
         }
 
         async function sendDiscovery() {
-            const deviceId = document.getElementById('deviceId').value;
-            const entityId = document.getElementById('entityId').value;
-
-            if (!deviceId) {
-                showStatus('Please enter a device ID', false);
-                return;
-            }
-
-            if (!entityId) {
-                showStatus('Please enter an entity ID', false);
-                return;
-            }
-
+            var deviceId = document.getElementById('deviceId').value;
+            var entityId = document.getElementById('entityId').value;
+            if (!deviceId) { showStatus('Please enter a device ID', false); return; }
+            if (!entityId) { showStatus('Please enter an entity ID', false); return; }
             setButtonsDisabled(true);
             showStatus('Sending discovery request...', true, true);
-
             try {
-                let body = 'deviceId=' + encodeURIComponent(deviceId);
-                    body += '&entityId=' + encodeURIComponent(entityId);
-
-                const response = await fetch('/discovery', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: body
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    showStatus('✓ Discovery sent to device ' + deviceId, true);
-                } else {
-                    showStatus('✗ Failed to send discovery: ' + (data.error || 'Unknown error'), false);
-                }
-            } catch (error) {
-                showStatus('✗ Network error: ' + error.message, false);
-            } finally {
-                setButtonsDisabled(false);
-            }
+                var body = 'deviceId=' + encodeURIComponent(deviceId) + '&entityId=' + encodeURIComponent(entityId);
+                var response = await fetch('/discovery', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: body });
+                var data = await response.json();
+                if (response.ok && data.success) showStatus('\u2713 Discovery sent to device ' + deviceId, true);
+                else showStatus('\u2717 Failed to send discovery: ' + (data.error || 'Unknown error'), false);
+            } catch(e) { showStatus('\u2717 Network error: ' + e.message, false); }
+            finally { setButtonsDisabled(false); }
         }
 
         async function sendValueGetRequest() {
-            const deviceId = document.getElementById('deviceId').value;
-            const entityId = document.getElementById('entityId').value;
-
-            if (!deviceId) {
-                showStatus('Please enter a device ID', false);
-                return;
-            }
-
-            if (!entityId) {
-                showStatus('Please enter an entity ID', false);
-                return;
-            }
-
+            var deviceId = document.getElementById('deviceId').value;
+            var entityId = document.getElementById('entityId').value;
+            if (!deviceId) { showStatus('Please enter a device ID', false); return; }
+            if (!entityId) { showStatus('Please enter an entity ID', false); return; }
             setButtonsDisabled(true);
             showStatus('Sending value get request...', true, true);
-
             try {
-                let body = 'deviceId=' + encodeURIComponent(deviceId);
-                    body += '&entityId=' + encodeURIComponent(entityId);
-
-                const response = await fetch('/value-get', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: body
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    showStatus('✓ Value get request sent to device ' + deviceId, true);
-                } else {
-                    showStatus('✗ Failed to send value get request: ' + (data.error || 'Unknown error'), false);
-                }
-            } catch (error) {
-                showStatus('✗ Network error: ' + error.message, false);
-            } finally {
-                setButtonsDisabled(false);
-            }
+                var body = 'deviceId=' + encodeURIComponent(deviceId) + '&entityId=' + encodeURIComponent(entityId);
+                var response = await fetch('/value-get', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: body });
+                var data = await response.json();
+                if (response.ok && data.success) showStatus('\u2713 Value get request sent to device ' + deviceId, true);
+                else showStatus('\u2717 Failed to send value get request: ' + (data.error || 'Unknown error'), false);
+            } catch(e) { showStatus('\u2717 Network error: ' + e.message, false); }
+            finally { setButtonsDisabled(false); }
         }
 
         async function sendValueSetRequest() {
-            const deviceId = document.getElementById('deviceId').value;
-            const entityId = document.getElementById('entityId').value;
-            const value = document.getElementById('value').value;
-
-            if (!deviceId) {
-                showStatus('Please enter a device ID', false);
-                return;
-            }
-
-            if (!entityId) {
-                showStatus('Please enter an entity ID', false);
-                return;
-            }
-
-            if (value === '') {
-                showStatus('Please enter a value to set', false);
-                return;
-            }
-
+            var deviceId = document.getElementById('deviceId').value;
+            var entityId = document.getElementById('entityId').value;
+            var value = document.getElementById('value').value;
+            if (!deviceId) { showStatus('Please enter a device ID', false); return; }
+            if (!entityId) { showStatus('Please enter an entity ID', false); return; }
+            if (value === '') { showStatus('Please enter a value to set', false); return; }
             setButtonsDisabled(true);
             showStatus('Sending value set request...', true, true);
-
             try {
-                let body = 'deviceId=' + encodeURIComponent(deviceId);
-                body += '&entityId=' + encodeURIComponent(entityId);
-                body += '&value=' + encodeURIComponent(value);
-
-                const response = await fetch('/value-set', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: body
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    showStatus('✓ Value set request sent to device ' + deviceId, true);
-                } else {
-                    showStatus('✗ Failed to send value set request: ' + (data.error || 'Unknown error'), false);
-                }
-            } catch (error) {
-                showStatus('✗ Network error: ' + error.message, false);
-            } finally {
-                setButtonsDisabled(false);
-            }
+                var body = 'deviceId=' + encodeURIComponent(deviceId) + '&entityId=' + encodeURIComponent(entityId) + '&value=' + encodeURIComponent(value);
+                var response = await fetch('/value-set', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: body });
+                var data = await response.json();
+                if (response.ok && data.success) showStatus('\u2713 Value set request sent to device ' + deviceId, true);
+                else showStatus('\u2717 Failed to send value set request: ' + (data.error || 'Unknown error'), false);
+            } catch(e) { showStatus('\u2717 Network error: ' + e.message, false); }
+            finally { setButtonsDisabled(false); }
         }
-</script>
+
+        // Allow Enter key to trigger value set
+        document.getElementById('value').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); sendValueSetRequest(); }
+        });
+
+        // Start WebSocket connection on load
+        connectWs();
+    </script>
 </body>
 </html>
