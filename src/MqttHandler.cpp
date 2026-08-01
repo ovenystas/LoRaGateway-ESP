@@ -13,6 +13,7 @@ MqttHandler::MqttHandler(WiFiClient& wifiClient)
 
 void MqttHandler::setupCallback() {
   client.setCallback([this](char* topic, byte* payload, unsigned int length) {
+    mqttRxCount++;
     if (onMessageReceived) {
       onMessageReceived(topic, payload, length);
     }
@@ -28,7 +29,17 @@ bool MqttHandler::connect(const char* broker, uint16_t port,
 
   client.setServer(broker, port);
   setupCallback();
-  return client.connect(clientId);
+
+  const char* lwtTopic = "lora-gw/status";
+  const char* lwtPayload = "{\"status\":\"offline\"}";
+  bool result =
+      client.connect(clientId, nullptr, nullptr, lwtTopic, 0, true, lwtPayload);
+
+  if (result) {
+    client.publish(lwtTopic, "{\"status\":\"online\"}", true);
+  }
+
+  return result;
 }
 
 bool MqttHandler::connect(const char* broker, uint16_t port,
@@ -42,7 +53,17 @@ bool MqttHandler::connect(const char* broker, uint16_t port,
 
   client.setServer(broker, port);
   setupCallback();
-  return client.connect(clientId, username, password);
+
+  const char* lwtTopic = "lora-gw/status";
+  const char* lwtPayload = "{\"status\":\"offline\"}";
+  bool result = client.connect(clientId, username, password, lwtTopic, 0, true,
+                               lwtPayload);
+
+  if (result) {
+    client.publish(lwtTopic, "{\"status\":\"online\"}", true);
+  }
+
+  return result;
 }
 
 void MqttHandler::disconnect() {
@@ -102,7 +123,11 @@ bool MqttHandler::publishSensorValues(
 
   serializeJson(doc, payload, sizeof(payload));
 
-  return client.publish(topic, payload);
+  bool result = client.publish(topic, payload);
+  if (result) {
+    mqttTxCount++;
+  }
+  return result;
 }
 
 bool MqttHandler::subscribeToCommands(uint8_t deviceId, uint8_t entityId,
@@ -234,7 +259,143 @@ bool MqttHandler::publishDiscovery(const EntityInfo& entity,
   const bool result =
       client.publish(topic, payload, true);  // Retain discovery message
 
+  if (result) {
+    mqttTxCount++;
+  }
   return result;
+}
+
+bool MqttHandler::publishGatewayStatus(
+    uint32_t uptime, bool wifiConnected, int8_t wifiRssi, const char* ip,
+    bool mqttConnected, uint32_t freeHeap, const char* version,
+    uint8_t deviceCount, bool loraOk, uint32_t loraRxCount,
+    uint32_t loraTxCount, uint32_t mqttRxCount, uint32_t mqttTxCount) {
+  const char* topic = "lora-gw/status";
+  char payload[512];
+
+  JsonDocument doc;
+  doc["uptime"] = uptime;
+  doc["wifi_connected"] = wifiConnected ? "ON" : "OFF";
+  doc["wifi_rssi"] = wifiRssi;
+  doc["ip"] = ip ? ip : "0.0.0.0";
+  doc["mqtt_connected"] = mqttConnected ? "ON" : "OFF";
+  doc["free_heap"] = freeHeap;
+  doc["version"] = version ? version : "unknown";
+  doc["device_count"] = deviceCount;
+  doc["lora_ok"] = loraOk ? "ON" : "OFF";
+  doc["lora_rx"] = loraRxCount;
+  doc["lora_tx"] = loraTxCount;
+  doc["mqtt_rx"] = mqttRxCount;
+  doc["mqtt_tx"] = mqttTxCount;
+
+  serializeJson(doc, payload, sizeof(payload));
+
+  bool result = client.publish(topic, payload, true);
+  if (result) {
+    mqttTxCount++;
+  }
+  return result;
+}
+
+bool MqttHandler::publishGatewayDiscovery(const char* nodePrefix) {
+  if (!nodePrefix) {
+    logger.println(Logger::ERR, F("Error: nodePrefix is null"));
+    return false;
+  }
+
+  bool allOk = true;
+  char topic[128];
+  char payload[512];
+
+  // Common device info for all gateway entities
+  auto buildDeviceObj = [](JsonDocument& doc) {
+    JsonObject dev = doc["device"].to<JsonObject>();
+    dev["identifiers"][0] = "lora_gateway";
+    dev["name"] = "LoRa Gateway";
+    dev["manufacturer"] = "DIY";
+    dev["model"] = "ESP32 + RFM95";
+  };
+
+  // Helper lambda to publish a single discovery config
+  auto publishConfig = [&](const char* component, const char* entityId,
+                           const char* name, const char* deviceClass,
+                           const char* unit, const char* stateClass,
+                           const char* valueTemplate, bool isBinarySensor) {
+    snprintf(topic, sizeof(topic), "homeassistant/%s/lora_gw/%s/config",
+             component, entityId);
+
+    JsonDocument doc;
+    doc["name"] = name;
+    doc["unique_id"] = String("lora_gw_") + entityId;
+    doc["object_id"] = String("lora_gw_") + entityId;
+    doc["state_topic"] = "lora-gw/status";
+
+    if (deviceClass && strlen(deviceClass) > 0) {
+      doc["device_class"] = deviceClass;
+    }
+    if (unit && strlen(unit) > 0) {
+      doc["unit_of_measurement"] = unit;
+    }
+    if (stateClass && strlen(stateClass) > 0) {
+      doc["state_class"] = stateClass;
+    }
+    if (valueTemplate && strlen(valueTemplate) > 0) {
+      doc["value_template"] = valueTemplate;
+    }
+
+    if (isBinarySensor) {
+      doc["payload_on"] = "ON";
+      doc["payload_off"] = "OFF";
+    }
+
+    buildDeviceObj(doc);
+
+    serializeJson(doc, payload, sizeof(payload));
+
+    logger.printf(Logger::DBG, "Publishing gateway discovery: %s -> %s", name,
+                  topic);
+    if (!client.publish(topic, payload, true)) {
+      allOk = false;
+    }
+  };
+
+  // Binary sensors
+  publishConfig("binary_sensor", "wifi_connected", "WiFi Connected",
+                "connectivity", nullptr, nullptr,
+                "{{ value_json.wifi_connected }}", true);
+  publishConfig("binary_sensor", "mqtt_connected", "MQTT Connected",
+                "connectivity", nullptr, nullptr,
+                "{{ value_json.mqtt_connected }}", true);
+  publishConfig("binary_sensor", "lora_ok", "LoRa Radio OK", nullptr, nullptr,
+                nullptr, "{{ value_json.lora_ok }}", true);
+
+  // Sensors
+  publishConfig("sensor", "uptime", "Uptime", "duration", "s", "measurement",
+                "{{ value_json.uptime }}", false);
+  publishConfig("sensor", "wifi_rssi", "WiFi RSSI", "signal_strength", "dBm",
+                "measurement", "{{ value_json.wifi_rssi }}", false);
+  publishConfig("sensor", "free_heap", "Free Heap", "data_size", "B",
+                "measurement", "{{ value_json.free_heap }}", false);
+  publishConfig("sensor", "device_count", "Connected Devices", nullptr, nullptr,
+                "measurement", "{{ value_json.device_count }}", false);
+  publishConfig("sensor", "lora_rx", "LoRa Packets Received", nullptr, nullptr,
+                "total_increasing", "{{ value_json.lora_rx }}", false);
+  publishConfig("sensor", "lora_tx", "LoRa Packets Sent", nullptr, nullptr,
+                "total_increasing", "{{ value_json.lora_tx }}", false);
+
+  // String sensors (no device_class/unit/state_class)
+  publishConfig("sensor", "version", "Firmware Version", nullptr, nullptr,
+                nullptr, "{{ value_json.version }}", false);
+  publishConfig("sensor", "ip", "IP Address", nullptr, nullptr, nullptr,
+                "{{ value_json.ip }}", false);
+
+  // MQTT message counters
+  publishConfig("sensor", "mqtt_rx", "MQTT Messages Received", nullptr, nullptr,
+                "total_increasing", "{{ value_json.mqtt_rx }}", false);
+  publishConfig("sensor", "mqtt_tx", "MQTT Messages Sent", nullptr, nullptr,
+                "total_increasing", "{{ value_json.mqtt_tx }}", false);
+
+  return allOk;
 }
 
 void MqttHandler::setOnMessageReceived(void (*callback)(const char*,

@@ -39,6 +39,17 @@ class MqttHandler {
   // Publish discovery message for Home Assistant
   bool publishDiscovery(const EntityInfo& entity, const char* nodePrefix);
 
+  // Publish gateway status as a single JSON payload to lora-gw/status
+  bool publishGatewayStatus(uint32_t uptime, bool wifiConnected, int8_t wifiRssi,
+                            const char* ip, bool mqttConnected,
+                            uint32_t freeHeap, const char* version,
+                            uint8_t deviceCount, bool loraOk,
+                            uint32_t loraRxCount, uint32_t loraTxCount,
+                            uint32_t mqttRxCount, uint32_t mqttTxCount);
+
+  // Publish Home Assistant discovery configs for all gateway status entities
+  bool publishGatewayDiscovery(const char* nodePrefix);
+
   // Set callback for received MQTT messages
   void setOnMessageReceived(void (*callback)(const char* topic,
                                              const byte* payload,
@@ -47,10 +58,16 @@ class MqttHandler {
   // Process MQTT events (should be called in main loop)
   void handle();
 
+  // Get MQTT message counters
+  uint32_t getMqttRxCount() const { return mqttRxCount; }
+  uint32_t getMqttTxCount() const { return mqttTxCount; }
+
  private:
   PubSubClient client;
   WiFiClient& wifiClient;
   void (*onMessageReceived)(const char*, const byte*, unsigned int);
+  uint32_t mqttRxCount = 0;
+  uint32_t mqttTxCount = 0;
 
   // Helper to configure MQTT callback
   void setupCallback();

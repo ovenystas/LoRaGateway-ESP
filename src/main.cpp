@@ -34,6 +34,7 @@ WebServerHandler webServer(loRaMsg, deviceRegistry);
 unsigned long lastMqttCheckTime = 0;
 unsigned long lastDeviceTimeoutCheck = 0;
 unsigned long lastPingTime = 0;
+unsigned long lastGatewayStatusTime = 0;
 uint8_t pingMessageId = 0;  // Track ping message ID
 const unsigned long MQTT_CHECK_INTERVAL =
     5000;  // Check MQTT connection every 5 seconds
@@ -41,6 +42,13 @@ const unsigned long DEVICE_TIMEOUT_CHECK_INTERVAL =
     60000;  // Check device timeouts every minute
 const unsigned long PING_INTERVAL =
     10000;  // Send ping request every 10 seconds
+
+// Gateway status tracking
+static bool gatewayDiscoveryPublished = false;
+static bool loraInitialized = false;
+static bool lastWifiConnected = false;
+static bool lastMqttConnected = false;
+static uint8_t lastDeviceCount = 0;
 
 // Non-blocking WiFi connection
 enum class WiFiState { NEED_CONNECT, CONNECTING, CONNECTED, BACKOFF };
@@ -101,6 +109,10 @@ void setup() {
   if (WiFi.status() == WL_CONNECTED) {
     setupMqtt();
   }
+
+  // Register callbacks for LoRa message handling
+  loRaMsg.setOnDiscoveryMessage(onDiscoveryMessage);
+  loRaMsg.setOnValueMessage(onValueMessage);
 
   // Send initial discovery request to all devices
   logger.println(Logger::INF,
@@ -166,7 +178,57 @@ void loop() {
   // Process MQTT events
   mqtt.handle();
 
+  publishGatewayStatus(currentTime);
+
   delay(10);  // Small delay to prevent watchdog timeout
+}
+
+void publishGatewayStatus(unsigned long currentTime) {
+  // Publish gateway status periodically and on state changes
+  {
+    bool wifiConnected = (WiFi.status() == WL_CONNECTED);
+    bool mqttConnected = mqtt.isConnected();
+    uint8_t deviceCount = deviceRegistry.getDeviceCount();
+
+    bool stateChanged = (wifiConnected != lastWifiConnected) ||
+                        (mqttConnected != lastMqttConnected) ||
+                        (deviceCount != lastDeviceCount);
+
+    // Publish gateway discovery once after MQTT connects
+    if (mqttConnected && !gatewayDiscoveryPublished) {
+      mqtt.publishGatewayDiscovery(MQTT_CLIENT_ID);
+      gatewayDiscoveryPublished = true;
+    }
+
+    // Publish status on interval or state change
+    if (mqttConnected && (stateChanged || currentTime - lastGatewayStatusTime >=
+                                              GATEWAY_STATUS_INTERVAL)) {
+      lastGatewayStatusTime = currentTime;
+      lastWifiConnected = wifiConnected;
+      lastMqttConnected = mqttConnected;
+      lastDeviceCount = deviceCount;
+
+      char versionStr[16];
+      snprintf(versionStr, sizeof(versionStr), "%u.%u.%u", VERSION_MAJOR,
+               VERSION_MINOR, VERSION_PATCH);
+
+      mqtt.publishGatewayStatus(
+          currentTime / 1000,               // uptime in seconds
+          wifiConnected,                    // wifi_connected
+          wifiConnected ? WiFi.RSSI() : 0,  // wifi_rssi
+          wifiConnected ? WiFi.localIP().toString().c_str() : "0.0.0.0",  // ip
+          mqttConnected,            // mqtt_connected
+          ESP.getFreeHeap(),        // free_heap
+          versionStr,               // version
+          deviceCount,              // device_count
+          loraInitialized,          // lora_ok
+          loRa.getPacketRxCount(),  // lora_rx
+          loRa.getPacketTxCount(),  // lora_tx
+          mqtt.getMqttRxCount(),    // mqtt_rx
+          mqtt.getMqttTxCount()     // mqtt_tx
+      );
+    }
+  }
 }
 
 static void printWelcomeMessage(void) {
@@ -220,6 +282,7 @@ static void setupLoRa() {
   }
 
   logger.println(Logger::INF, F(" OK."));
+  loraInitialized = true;
 }
 
 // Sets up ArduinoOTA so firmware can be uploaded over WiFi using

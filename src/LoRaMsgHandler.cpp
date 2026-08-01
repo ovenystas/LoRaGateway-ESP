@@ -10,7 +10,10 @@
 LoRaMsgHandler* LoRaMsgHandler::instance = nullptr;
 
 LoRaMsgHandler::LoRaMsgHandler(LoRaHandler& loRa, uint8_t myAddress)
-    : loRa(loRa), myAddress(myAddress) {
+    : loRa(loRa),
+      myAddress(myAddress),
+      onDiscoveryMessage(nullptr),
+      onValueMessage(nullptr) {
   LoRaMsgHandler::instance = this;
   loRa.setOnMessageReceived(&LoRaMsgHandler::handleMessageStatic);
 }
@@ -137,7 +140,9 @@ void LoRaMsgHandler::handleValueMessage(const LoRaRxMessage& msg) {
 
       valueItems.push_back(valueItem);
     }
-    onValueMessage(deviceId, valueItems);
+    if (onValueMessage) {
+      onValueMessage(deviceId, valueItems);
+    }
   }
 }
 
@@ -164,7 +169,9 @@ void LoRaMsgHandler::handleDiscoveryMessage(const LoRaRxMessage& msg) {
                   discovery.format.fromRawValue(discovery.maxValue));
 
     const uint8_t deviceId = msg.header.src;
-    onDiscoveryMessage(deviceId, discovery);
+    if (onDiscoveryMessage) {
+      onDiscoveryMessage(deviceId, discovery);
+    }
   }
 }
 

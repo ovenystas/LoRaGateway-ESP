@@ -11,7 +11,9 @@ LoRaHandler::LoRaHandler(int csPin, int rstPin, int dioPin)
     : csPin(csPin),
       rstPin(rstPin),
       dioPin(dioPin),
-      onMessageReceived(nullptr) {}
+      onMessageReceived(nullptr),
+      packetRxCount(0),
+      packetTxCount(0) {}
 
 bool LoRaHandler::begin(long frequency) {
   // Set LoRa pins
@@ -39,6 +41,8 @@ bool LoRaHandler::sendMessage(const LoRaTxMessage& msg) {
   LoRa.beginPacket();
   LoRa.write(buffer, len);
   LoRa.endPacket();
+
+  packetTxCount++;
 
   return true;
 }
@@ -78,6 +82,7 @@ bool LoRaHandler::readPacket(LoRaRxMessage& msg) {
   if (decodeMessage(buffer, len, msg)) {
     msg.rssi = LoRa.packetRssi();
     msg.snr = LoRa.packetSnr();
+    packetRxCount++;
     return true;
   }
 

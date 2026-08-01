@@ -20,6 +20,10 @@ class LoRaHandler {
   // Process LoRa events (should be called in main loop)
   void handle();
 
+  // Packet counters
+  uint32_t getPacketRxCount() const { return packetRxCount; }
+  uint32_t getPacketTxCount() const { return packetTxCount; }
+
   // Encode message to bytes
   static uint8_t encodeMessage(const LoRaTxMessage& msg, uint8_t* buffer,
                                uint8_t maxLen);
@@ -36,6 +40,8 @@ class LoRaHandler {
   const int rstPin;
   const int dioPin;
   void (*onMessageReceived)(const LoRaRxMessage&);
+  uint32_t packetRxCount;
+  uint32_t packetTxCount;
 
   // Helper to read and decode packet from LoRa module
   bool readPacket(LoRaRxMessage& msg);

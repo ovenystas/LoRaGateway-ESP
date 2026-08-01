@@ -15,6 +15,7 @@
 // Gateway Configuration
 #define GATEWAY_NAME "LoRa Gateway"
 #define NODE_TIMEOUT_SECONDS 300  // Timeout for node considered offline
+#define GATEWAY_STATUS_INTERVAL 60000  // Publish gateway status every 60 seconds
 
 // OTA (Over-The-Air) Update Configuration
 // Hostname used for mDNS so the device can be reached as
